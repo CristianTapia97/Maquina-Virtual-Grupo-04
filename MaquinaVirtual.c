@@ -4,7 +4,8 @@
 #include <string.h>
 
 #define SIZE 16384
-
+#define CS registros[26]
+#define DS registros[27]
 // Memoria y Registros
 uint8_t memoria[SIZE];
 int32_t registros[32];
@@ -47,7 +48,7 @@ int iniciar_programa(const char *ruta_archivo) {
 
     // 3. Cargar el código directamente al inicio de la memoria RAM
     size_t leidos = fread(memoria, sizeof(uint8_t), tam_codigo, archivo);
-    //fclose(archivo);
+    fclose(archivo);
 
     if (leidos != tam_codigo) {
         printf("Error: No se pudo leer todo el segmento de código.\n");
@@ -68,8 +69,8 @@ int iniciar_programa(const char *ruta_archivo) {
     }
 
     // Inicializar registros base 
-    registros[26] = 0x00000000; // CS
-    registros[27] = 0x00010000; // DS
+    CS = 0x00000000; // CS
+    DS = 0x00010000; // DS
     registros[0]  = registros[26]; // IP
 
     return 1;
