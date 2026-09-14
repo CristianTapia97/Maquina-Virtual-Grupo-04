@@ -9,14 +9,9 @@
 // Memoria y Registros
 uint8_t memoria[SIZE];
 int32_t registros[32];
+int32_t tabla_segmentos[8];
+// Tabla de segmentos: 8 entradas de 32 bits 
 
-// Tabla de segmentos: 8 entradas de 32 bits (base 16 bits, tamaño 16 bits)
-typedef struct {
-    uint16_t base;
-    uint16_t tamano;
-} Segmento;
-
-Segmento tabla_segmentos[8];
 
 int iniciar_programa(const char *ruta_archivo) {
     FILE *archivo = fopen(ruta_archivo, "rb");
@@ -54,18 +49,16 @@ int iniciar_programa(const char *ruta_archivo) {
         printf("Error: No se pudo leer todo el segmento de código.\n");
         return 0;
     }
-
-    tabla_segmentos[0].base = 0;
-    tabla_segmentos[0].tamano = tam_codigo;
+    //Segmento 0: Codigo
+    tabla_segmentos[0]= ((uint32_t)0 << 16) | tam_codigo;
 
     // Segmento 1: Datos (el resto de la RAM)
-    tabla_segmentos[1].base = tam_codigo;
-    tabla_segmentos[1].tamano = SIZE - tam_codigo;
+    tabla_segmentos[1]= (uint32_t)tam_codigo<<16;
+    tabla_segmentos[1] =tabla_segmentos[1] | (uint32_t)(SIZE - tam_codigo);
 
     // Segmentos 2 al 7: no utilizados por ahora (valor 0xFFFF)
     for (int i = 2; i < 8; i++) {
-        tabla_segmentos[i].base = 0xFFFF;
-        tabla_segmentos[i].tamano = 0xFFFF;
+        tabla_segmentos[i] = 0xFFFFFFFF;
     }
 
     // Inicializar registros base 
@@ -76,13 +69,13 @@ int iniciar_programa(const char *ruta_archivo) {
     return 1;
 }
 int main(){
-    iniciar_programa("arch.vmx");
-    /*para probar lecturas
-    printf("Tamano del codigo: %u bytes\n", tabla_segmentos[0].tamano);
+    iniciar_programa("ej7.vmx");
+    /*para probar lecturas*/
+    printf("Tamano del codigo: %u bytes\n", tabla_segmentos[0] & 0xFFFF);
     printf("Bytes cargados en memoria:\n");
-    for (uint16_t i = 0; i < tabla_segmentos[0].tamano; i++) {
+    for (uint16_t i = 0; i < (tabla_segmentos[0] & 0xFFFF); i++) {
         printf("[%04X]: %02X (%d)\n", i, memoria[i], memoria[i]);
     }
-    */
+    
     return 0;
 }
