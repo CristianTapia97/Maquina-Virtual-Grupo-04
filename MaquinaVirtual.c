@@ -4,14 +4,23 @@
 #include <string.h>
 
 #define SIZE 16384
+#define IP registros[0]
+#define OPC registros[1]
+#define OP1 registros[2]
+#define OP2 registros[3]
+#define LAR registros[4]
+#define MAR registros[5]
+#define MBR registros[6]
 #define CS registros[26]
 #define DS registros[27]
 // Memoria y Registros
 uint8_t memoria[SIZE];
-int32_t registros[32];
+int32_t registros[32] = {0};
 int32_t tabla_segmentos[8];
 // Tabla de segmentos: 8 entradas de 32 bits 
 
+int puntero_logico_a_direccion_fisica(uint32_t puntero_l);
+uint32_t leer_memoria(int dir_fisica, uint8_t c_bytes);
 
 int iniciar_programa(const char *ruta_archivo) {
     FILE *archivo = fopen(ruta_archivo, "rb");
@@ -50,13 +59,13 @@ int iniciar_programa(const char *ruta_archivo) {
         return 0;
     }
     //Segmento 0: Codigo
-    tabla_segmentos[0]= ((uint32_t)0 << 16) | tam_codigo;
+    tabla_segmentos[0] = ((uint32_t)0 << 16) | tam_codigo;
 
     // Segmento 1: Datos (el resto de la RAM)
-    tabla_segmentos[1]= (uint32_t)tam_codigo<<16;
-    tabla_segmentos[1] =tabla_segmentos[1] | (uint32_t)(SIZE - tam_codigo);
+    tabla_segmentos[1] = (uint32_t)tam_codigo<<16;
+    tabla_segmentos[1] = tabla_segmentos[1] | (uint32_t)(SIZE - tam_codigo);
 
-    // Segmentos 2 al 7: no utilizados por ahora (valor 0xFFFF)
+    // Segmentos 2 al 7: no utilizados por ahora (valor 0xFFFFFFFF)
     for (int i = 2; i < 8; i++) {
         tabla_segmentos[i] = 0xFFFFFFFF;
     }
@@ -64,18 +73,105 @@ int iniciar_programa(const char *ruta_archivo) {
     // Inicializar registros base 
     CS = 0x00000000; // CS
     DS = 0x00010000; // DS
-    registros[0]  = registros[26]; // IP
+    registros[0]  = CS; // IP
 
     return 1;
 }
+
 int main(){
-    iniciar_programa("ej7.vmx");
+    iniciar_programa("ej.vmx");
+
+    // estoy haciendo los pasos de ejecucion de una instruccion directo en el main para probar
+    int dir_ip = puntero_logico_a_direccion_fisica(IP);
+    //if (dir_ip == -1) => Fallo de segmento
+    uint8_t operacion = leer_memoria(dir_ip, 1);
+    OPC  = operacion & 0b00011111;
+    uint8_t tipo_p1 = (operacion>>4) & 0b00000011;
+    uint8_t tipo_p2 = (operacion>>6) & 0b00000011;
+    int pos_data_p1 = dir_ip+1;
+    int pos_data_p2 = pos_data_p1+tipo_p1; // los tipos de los operandos son a demas el tamanio de los operandos
+    uint32_t data_p1 = leer_memoria(pos_data_p1, tipo_p1);
+    uint32_t data_p2 = leer_memoria(pos_data_p2, tipo_p2);
+    OP1 = tipo_p1<<24;
+    OP1 += data_p1;
+    OP2 = tipo_p2<<24;
+    OP2 += data_p2;
+    IP += 1+tipo_p1+tipo_p2;// desplazo IP a la siguiente instruccion
+
+    printf("operacion: %02X\n", operacion); // out de debug para tantear los valores leidos
+    printf("tipo o:    %02X\n", tipo_o);
+    printf("tipo p1:   %d  data: %08X\n", tipo_p1, data_p1);
+    printf("tipo p2:   %d  data: %08X\n", tipo_p2, data_p2);
+
+    // ejecutar la operacion almacenada en OPC OP1 OP2
+
+
+
+
+
+
+
     /*para probar lecturas*/
-    printf("Tamano del codigo: %u bytes\n", tabla_segmentos[0] & 0xFFFF);
+    printf("\nTamano del codigo: %u bytes\n", tabla_segmentos[0] & 0xFFFF);
     printf("Bytes cargados en memoria:\n");
     for (uint16_t i = 0; i < (tabla_segmentos[0] & 0xFFFF); i++) {
         printf("[%04X]: %02X (%d)\n", i, memoria[i], memoria[i]);
     }
     
     return 0;
+}
+
+
+// los return -1 significan que hubo un error, los prints son temporales para el debug
+int puntero_logico_a_direccion_fisica(uint32_t puntero_l)
+{
+    uint16_t cod_segmento = puntero_l >> 16;
+    uint16_t offset = puntero_l;                // la mascara 0x0000FFFF esta implisita al pasar de 32 a 16 bits
+
+    if(cod_segmento<0 || cod_segmento>7)
+    {
+        printf("[ERROR:Fallo de segmento] puntero_logico_a_direccion_fisica(puntero_l): puntero logico %08X con codigo de segmento invalido\n", puntero_l);
+        return -1;
+    }
+    uint32_t segmento = tabla_segmentos[cod_segmento];
+    uint16_t pos_inicio_seg = segmento >> 16;
+    uint16_t tam_segmento = segmento;           // la mascara 0x0000FFFF esta implisita al pasar de 32 a 16 bits
+
+    int pos_fin_seg = pos_inicio_seg + tam_segmento; // la posicion del primer byte fuera del segmento
+    int pos_puntero = pos_inicio_seg + offset;
+
+    if(pos_puntero>=pos_fin_seg || pos_puntero<pos_inicio_seg)
+    {
+        printf("[ERROR:Fallo de segmento] puntero_logico_a_direccion_fisica(puntero_l): puntero logico %08X apunta fuera de su segmento \n", puntero_l);
+        return -1;
+    }
+
+
+    //printf("puntero_l:     %08X\n", puntero_l);
+    //printf("cod_segmento:  %04X\n", cod_segmento);
+    //printf("offset:        %04X\n\n", offset);
+    //printf("segmento:      %08X\n", segmento);
+
+    return pos_puntero;
+}
+
+
+// pueden leerse de 0 a 4 bytes!
+// lee los bytes desde la direccion fisica ingresada y los junta en un solo valor, el output es siempre de 4 bytes pero pueden leerse de 0 a 4 bytes
+uint32_t leer_memoria(int dir_fisica, uint8_t c_bytes)
+{
+    if(0>c_bytes || c_bytes>4 || 0>dir_fisica || dir_fisica>=SIZE || dir_fisica+c_bytes-1>=SIZE)
+    {
+        // este error no deberia suceder nunca, si sucede es por algo mal hecho nuestro, a diferencia de Instruccion invalida Division por cero o Fallo de segmento que son errores del usuario
+        printf("ERROR: leer_memoria(dir_fisica, c_bytes) recibio una cantidad invalida de bytes a leer(c_bytes: %d)(0<=c_bytes<=4) o una posicion de la memoria fuera de rango(dir_fisica: %d)(0<=dir_fisica<%d) o dir_final=dir_fisica+c_bytes-1 se escapa de la memoria (dir_final: %d)(0<=dir_final<%d) \n", c_bytes, dir_fisica, SIZE, dir_fisica+c_bytes-1, SIZE);
+        return 0xFFFFFFFF;
+    }
+
+    uint32_t out = 0;
+    for(int i=0; i<c_bytes; i++)
+    {
+        out <<= 8;
+        out += memoria[dir_fisica+i];
+    }
+    return out;
 }
