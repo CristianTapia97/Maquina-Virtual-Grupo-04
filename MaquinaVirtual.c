@@ -16,7 +16,11 @@
 
 // predefinicion operaciones
 int opc_stop();
+
+int opc_1placeholder(uint32_t op1){ printf("placeholder de operacion de 1 param. OPC: %02X\n", OPC); return 0;}
+
 int opc_mov(uint32_t, uint32_t);
+int opc_2placeholder(uint32_t op1, uint32_t op2){ printf("placeholder de operacion de 2 param. OPC: %02X\n", OPC); return 0;}
 
 
 
@@ -26,36 +30,35 @@ typedef int(*operacion_1_param)(uint32_t);
 
 // Arrays de funciones de 1 y 2 parametros
 operacion_2_params operaciones_2_params[] = {
-    opc_mov
-    //MOV
-    //ADD
-    //SUB
-    //MUL
-    //DIV
-    //CMP
-    //AND
-    //OR
-    //XOR
-    //SWAP
-    //SHL
-    //SHR
-    //SAR
-    //LDL
-    //LDX
-    //RND
+    opc_mov,
+    opc_2placeholder,//ADD   placeholders por si queremos ir desarrollandolas en cualquier orden
+    opc_2placeholder,//SUB
+    opc_2placeholder,//MUL
+    opc_2placeholder,//DIV
+    opc_2placeholder,//CMP
+    opc_2placeholder,//AND
+    opc_2placeholder,//OR
+    opc_2placeholder,//XOR
+    opc_2placeholder,//SWAP
+    opc_2placeholder,//SHL
+    opc_2placeholder,//SHR
+    opc_2placeholder,//SAR
+    opc_2placeholder,//LDL
+    opc_2placeholder,//LDX
+    opc_2placeholder //RND
 };
 operacion_1_param operaciones_1_param[] = {
-    //SYS
-    //JMP
-    //JP
-    //JN
-    //JZ
-    //JC
-    //JV
-    //JNP
-    //JNN
-    //JNZ
-    //NOT
+    opc_1placeholder,//SYS
+    opc_1placeholder,//JMP
+    opc_1placeholder,//JP
+    opc_1placeholder,//JN
+    opc_1placeholder,//JZ
+    opc_1placeholder,//JC
+    opc_1placeholder,//JV
+    opc_1placeholder,//JNP
+    opc_1placeholder,//JNN
+    opc_1placeholder,//JNZ
+    opc_1placeholder //NOT
 };
 
 
