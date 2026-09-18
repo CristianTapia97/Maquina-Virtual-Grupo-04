@@ -14,12 +14,19 @@
 #define CS registros[26]
 #define DS registros[27]
 
+// predefinicion operaciones
+int opc_stop();
+int opc_mov(uint32_t, uint32_t);
+
+
+
 // Tipos de las funciones de 2 y 1 parametros
-typedef int(*operacion_2_params)(uint32_t, uint32_t);
+typedef int(*operacion_2_params)(uint32_t, uint32_t); // para charlar, las funciones realmente no hace falta que reciban parametros, porque tienen accesso a los registros, asi que pueden acceder a OP1 y OP2 a voluntad
 typedef int(*operacion_1_param)(uint32_t);
 
 // Arrays de funciones de 1 y 2 parametros
 operacion_2_params operaciones_2_params[] = {
+    opc_mov
     //MOV
     //ADD
     //SUB
@@ -37,7 +44,7 @@ operacion_2_params operaciones_2_params[] = {
     //LDX
     //RND
 };
-operacion_2_params operaciones_2_params[] = {
+operacion_1_param operaciones_1_param[] = {
     //SYS
     //JMP
     //JP
@@ -51,6 +58,9 @@ operacion_2_params operaciones_2_params[] = {
     //NOT
 };
 
+
+
+
 // Memoria y Registros
 uint8_t memoria[SIZE];
 int32_t registros[32] = {0};
@@ -60,12 +70,13 @@ int32_t tabla_segmentos[8];
 int puntero_logico_a_direccion_fisica(uint32_t puntero_l);
 int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos);
 int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data);
+int escribir_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t data);
 int lectura_programa();
 int iniciar_programa(const char *ruta_archivo);
 int str_termina_con(char* str, char* sufijo);
 
 int main(int argc, char **argv){
-    char nombre_archivo[] = "asm1.vmx";
+    char nombre_archivo[] = "asmtest.vmx";
     int flag_on = 0;
     
     /* input del archivo por consola, funciona bien pero lo dejo comentado para testear mas comodo
@@ -110,6 +121,22 @@ int main(int argc, char **argv){
         }
     }
 
+
+    printf("\n Registros:\n");
+    for(int i=0; i<32; i++)
+        printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]);
+
+    printf("\n Code Segment: \n");
+    int dir_cs = puntero_logico_a_direccion_fisica(CS);
+    int tam_cs = puntero_logico_a_direccion_fisica(DS);
+    for(int i=dir_cs; i<dir_cs+tam_cs; i++)
+        printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
+
+    printf("\n Data Segment: \n");
+    int dir_ds = puntero_logico_a_direccion_fisica(DS);
+    for(int i=dir_ds; i<dir_ds+16; i++)
+        printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
+    printf("...\n");
     return 0;
 }
 
@@ -264,11 +291,40 @@ int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data)
 }
 
 /**
+ * escribe de 0 a 4 bytes desde la posicion apuntada por puntero_l
+ * 
+ * @param puntero_l puntero logico al primer byte que pisar
+ * @param c_bytes cantidad de bytes a escribir
+ * @param data valor a escribir
+ * 
+ * @return se retorna el codigo de error de la operacion 0 = sin error -1 = error de segmento
+ */
+int escribir_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t data)
+{
+    int dir_fisica;
+    if(!chunk_memoria_valido(puntero_l, c_bytes, &dir_fisica))
+        return -1; // error de segmento
+    
+
+    
+    for(int i=0; i<c_bytes; i++)
+    {
+        uint8_t shift_bytes = c_bytes-1-i; //   c_bytes-1 = ultimo byte   =>   c_bytes-2   =>   ...   =>   c_bytes-c_bytes = 0 shift = primer byte
+        uint8_t shift_bits = 8*shift_bytes;
+        uint8_t byte = data>>shift_bits;
+        memoria[dir_fisica+i] = byte;
+    }
+    return 0;
+}
+
+/**
  * @return retorna codigo de error (estaba que 0 es error y 1 es todo ok, pero haciendo que 0 sea todo ok podemos tener multiples codigos de error)  
  * 0 = OK
  * -1 = Error de segmento
  * -2 = Instruccion invalida
  * -3 = Division por cero
+ * 
+ * se pueden emitir otros errores que son por razones no previstas, o que no son las 3 standar que nos dan
  */
 int lectura_programa(){
     uint8_t tipo_p1 = 0;
@@ -282,52 +338,147 @@ int lectura_programa(){
         return -1; // error de segmento
     
     OPC  = operacion & 0b00011111;
-    if (OPC == 0x0F) { 
-        // 0 operandos: STOP
-        //finalizar programa
-    } 
-    else if (OPC <= 0x0A) { 
-        // 1 operando (0x00 a 0x0A)
-        tipo_p1 = (operacion >> 6) & 0b00000011; // Bits 7 y 6
+    tipo_p2 = (operacion >> 6) & 0b00000011;            // Bits 7 y 6: Operando B
+    tipo_p1 = ((operacion >> 4) & 0b00000011);          // Operando A
+    
+    uint32_t pl_p2 = IP+1;
+    uint32_t pl_p1 = IP+1+tipo_p2;
+    
+    if(
+        leer_memoria(pl_p2, tipo_p2, &data_p2) || 
+        leer_memoria(pl_p1, tipo_p1, &data_p1)
+    )
+        return -1; // error de segmento
+
+    tam_instruccion += (tipo_p1 + tipo_p2);
+
+    if(!tipo_p1)
+    {
+        tipo_p1 = tipo_p2;
         tipo_p2 = 0;
-
-        if(leer_memoria(IP+1, tipo_p1, &data_p1))
-            return -1; // error de segmento
-
-        tam_instruccion += tipo_p1;
-    } 
-    else if (OPC >= 0x10 && OPC <= 0x1F) { 
-        // 2 operandos (0x10 a 0x1F)
-        tipo_p2 = (operacion >> 6) & 0b00000011;           // Bits 7 y 6: Operando B
-        tipo_p1 = ((operacion >> 4) & 0b00000011); // Operando A
-
-        // Orden en memoria: primero B, luego A
-        uint32_t pl_p2 = IP+1;
-        uint32_t pl_p1 = IP+1+tipo_p2;
-        
-
-        if(
-            leer_memoria(pl_p2, tipo_p2, &data_p1) || 
-            leer_memoria(pl_p1, tipo_p1, &data_p1)
-        )
-            return -1; // error de segmento
-
-        tam_instruccion += (tipo_p1 + tipo_p2);
-    } 
-    else {
-        printf("[ERROR: Instruccion invalida] Opcode %02X no existe.\n", OPC); //
-        IP = (int32_t)0xFFFFFFFF;
-        return -2;
+        data_p1 = data_p2;
+        data_p2 = 0;
     }
+
+
     OP1 = tipo_p1<<24;
     OP1 += data_p1;
     OP2 = tipo_p2<<24;
     OP2 += data_p2;
     IP += tam_instruccion;// desplazo IP a la siguiente instruccion
 
+    printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
+
+    uint8_t index_c = OPC;
+    int err;
+    if(tipo_p1==0 && tipo_p2==0) // 0 params (STOP)
+    {
+        if(index_c != 0x0F) // si tiene 0 parametros y no es STOP, Instruccion invalida
+            return -2; // Instruccion invalida
+        err = opc_stop();
+    }
+    else if(tipo_p2==0) // 1 param
+    {
+        if(index_c<0 || index_c>0x0A)
+            return -2; // Instruccion invalida
+        
+        err = operaciones_1_param[index_c](OP1);
+    }
+    else // 2 params
+    {
+        index_c -= 0x10;
+        if(index_c<0 || index_c>0x0F)
+            return -2; // Instruccion invalida
+        err = operaciones_2_params[index_c](OP1, OP2); 
+    }
+
     printf("operacion: %02X\n", operacion); // out de debug para tantear los valores leidos
     printf("tipo o:    %02X\n", OPC);
     printf("tipo p1:   %d  data: %08X\n", tipo_p1, data_p1);
     printf("tipo p2:   %d  data: %08X\n", tipo_p2, data_p2);
+    printf("err code:  %d\n", err);
+    return err;
+}
+
+int get_dato_op(uint32_t op, int32_t* dato)
+{
+    if(!dato)
+    {
+        printf("ERROR: get_dato_op() recibio dato=NULL!!!\n");
+        return -10;
+    }
+
+    uint8_t tipo = (op>>24)&0x3;
+    uint8_t index_reg;
+    switch(tipo){
+        case 0: // no hay operando
+            *dato = 0;
+            break;
+        case 1: // operando de registro
+            index_reg = op&0x0000001F;
+            *dato = registros[index_reg];
+            break;
+        case 2: // operando inmediato
+            *dato = op&0x0000FFFF;
+            if(op&0x00008000) // si el ultimo bit de los 2 bytes de informacion es un 1, el numero es negativo, se rellenan los restantes bits con 1s
+                op += 0xFFFF0000;
+            break;
+        case 3: // operando de memoria
+            index_reg = op&0x0000001F;
+            uint16_t extra_offset = (op>>8)&0x0000FFFF;
+            
+            uint32_t l_pointer = registros[index_reg]+extra_offset;
+            if(leer_memoria(l_pointer, 4, dato))
+                return -1;
+            break;
+        //default: no hace falta porque tipo se pasa por una mascara de 2 bits, osea que no hay otro valor posible aparte de 0 1 2 3
+    }   
     return 0;
 }
+
+int set_dato_op(uint32_t op, int32_t dato)
+{
+    uint8_t tipo = (op>>24)&0x3;
+    uint8_t index_reg;
+    switch(tipo){
+        case 0: // no hay operando
+            return -20; // tipo de operando izquierdo invalido
+        case 1: // operando de registro
+            index_reg = op & 0x0000001F; // mascara para los ultimos 5 bits
+            registros[index_reg] = dato;
+            break;
+        case 2: // operando inmediato
+            return -20; // tipo de operando izquierdo invalido
+        case 3: // operando de memoria
+            index_reg = op&0x0000001F;
+            uint16_t extra_offset = (op>>8)&0x0000FFFF;
+            
+            uint32_t l_pointer = registros[index_reg]+extra_offset;
+            if(escribir_memoria(l_pointer, 4, dato))
+                return -1;
+            break;
+        //default: no hace falta porque tipo se pasa por una mascara de 2 bits, osea que no hay otro valor posible aparte de 0 1 2 3
+    }   
+    return 0;
+}
+
+int opc_stop()
+{
+    IP = 0xFFFFFFFF;
+    return 0;
+}
+
+int opc_mov(uint32_t op1, uint32_t op2)
+{
+    uint32_t dato_op2;
+    int err = get_dato_op(op2, &dato_op2);
+    if(err)
+        return err;
+
+    err = set_dato_op(op1, dato_op2);
+    if(err)
+        return err;
+    
+    return 0;
+}
+
