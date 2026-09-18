@@ -13,6 +13,44 @@
 #define MBR registros[6]
 #define CS registros[26]
 #define DS registros[27]
+
+// Tipos de las funciones de 2 y 1 parametros
+typedef int(*operacion_2_params)(uint32_t, uint32_t);
+typedef int(*operacion_1_param)(uint32_t);
+
+// Arrays de funciones de 1 y 2 parametros
+operacion_2_params operaciones_2_params[] = {
+    //MOV
+    //ADD
+    //SUB
+    //MUL
+    //DIV
+    //CMP
+    //AND
+    //OR
+    //XOR
+    //SWAP
+    //SHL
+    //SHR
+    //SAR
+    //LDL
+    //LDX
+    //RND
+};
+operacion_2_params operaciones_2_params[] = {
+    //SYS
+    //JMP
+    //JP
+    //JN
+    //JZ
+    //JC
+    //JV
+    //JNP
+    //JNN
+    //JNZ
+    //NOT
+};
+
 // Memoria y Registros
 uint8_t memoria[SIZE];
 int32_t registros[32] = {0};
@@ -71,6 +109,7 @@ int main(int argc, char **argv){
             break;
         }
     }
+
     return 0;
 }
 
