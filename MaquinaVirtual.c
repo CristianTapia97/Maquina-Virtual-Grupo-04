@@ -84,7 +84,7 @@ int iniciar_programa(const char *ruta_archivo){
     tabla_segmentos[1] = (uint32_t)tam_codigo<<16;
     tabla_segmentos[1] = tabla_segmentos[1] | (uint32_t)(SIZE - tam_codigo);
 
-    // Segmentos 2 al 7: no utilizados por ahora (valor 0xFFFFFFFF)
+    // Segmentos 2 al 7: no utilizados por a hora (valor 0xFFFFFFFF)
     for (int i = 2; i < 8; i++) {
         tabla_segmentos[i] = 0xFFFFFFFF;
     }
@@ -92,7 +92,7 @@ int iniciar_programa(const char *ruta_archivo){
     // Inicializar registros base 
     CS = 0x00000000; // CS
     DS = 0x00010000; // DS
-    registros[0]  = CS; // IP
+    IP  = CS; // IP
 
     return 1;
 }
@@ -150,20 +150,20 @@ uint32_t leer_memoria(int dir_fisica, uint8_t c_bytes)
     }
     return out;
 }
+
 int lectura_programa(){
-    uint8_t tipo_p1;
-    uint8_t tipo_p2;
+    uint8_t tipo_p1=0;
+    uint8_t tipo_p2=0;
     uint32_t data_p1 = 0;
     uint32_t data_p2 = 0;
     uint32_t tam_instruccion = 1;
-    int dir_ip = puntero_logico_a_direccion_fisica(IP);
+    int32_t dir_ip = puntero_logico_a_direccion_fisica(IP);
     //if (dir_ip == -1) => Fallo de segmento
     uint8_t operacion = leer_memoria(dir_ip, 1);
     OPC  = operacion & 0b00011111;
     if (OPC == 0x0F) { 
         // 0 operandos: STOP
-        tipo_p1 = 0;
-        tipo_p2 = 0;
+        //finalizar programa
     } 
     else if (OPC <= 0x0A) { 
         // 1 operando (0x00 a 0x0A)
