@@ -20,31 +20,80 @@ int32_t tabla_segmentos[8];
 // Tabla de segmentos: 8 entradas de 32 bits 
 
 int puntero_logico_a_direccion_fisica(uint32_t puntero_l);
-uint32_t leer_memoria(int dir_fisica, uint8_t c_bytes);
+int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos);
+int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data);
 int lectura_programa();
 int iniciar_programa(const char *ruta_archivo);
+int str_termina_con(char* str, char* sufijo);
 
-int main(){
-    iniciar_programa("ej7.vmx");
+int main(int argc, char **argv){
+    char nombre_archivo[] = "asm1.vmx";
+    int flag_on = 0;
+    
+    /* input del archivo por consola, funciona bien pero lo dejo comentado para testear mas comodo
+
+    if(argc<2 || argc>3) // si tiene 1 o 2 parametros (argv[0] siempre tiene la direccion del exe)
+    {
+        printf("INPUT ERROR: cantidad de argumentos invalida, formato de ejecucion:  vmx filename.vmx [-d]\n");
+        return 1;
+    }
+    else if(!str_termina_con(argv[1], ".vmx"))
+    {
+        printf("INPUT ERROR: parametro 1 (nombre de archivo .vmx) no termina con .vmx\n");
+        return 1;
+    }
+    else if(argc==3 && strcmp(argv[2], "-d"))
+    {
+        printf("INPUT ERROR: parametro 2 no es -d (unica opcion para parametro 2)\n");
+        return 1;
+    }
+    else if(argc==3)
+    {
+        flag_on = 1;
+    }
+    nombre_archivo = malloc(strlen(argv[1])+1);
+    strcpy(nombre_archivo, argv[1]);
+    printf("nombre archivo ingresado: %s\n", nombre_archivo);
+    printf("flag: %d\n", flag_on);
+    */
+
+
+    iniciar_programa(nombre_archivo);
 
     /*para probar lecturas*/
     uint16_t tam_codigo = tabla_segmentos[0] & 0xFFFF;
-
+    int err;
     // Recorre instrucción por instrucción hasta que IP alcance el fin del código o dé error
     while ((IP != (int32_t)0xFFFFFFFF) && ((IP & 0xFFFF) < tam_codigo)) {
         printf("\n[Fetch en IP = %08X]\n", IP);
-        if (!lectura_programa()) {
+        if (err=lectura_programa()) {
             printf("Deteniendo lectura por error o STOP.\n");
             break;
         }
     }
     return 0;
 }
+
+int str_termina_con(char* str, char* sufijo)
+{
+    if(!str || !sufijo)
+    {
+        printf("ERROR: str_termina_con(str, sufijo) recibio un parametro nulo (str: %p, sufijo: %p)\n", str, sufijo);
+        return 0;
+    }
+    int len_str = strlen(str);
+    int len_sufijo = strlen(sufijo);
+    if(len_str<len_sufijo)
+        return 0;
+    return strncmp(str + len_str - len_sufijo, sufijo, len_sufijo) == 0;
+}
+
+
 int iniciar_programa(const char *ruta_archivo){
     
     FILE *archivo = fopen(ruta_archivo, "rb");
     if (!archivo) {
-        printf("Error al abrir el archivo .vmx");
+        printf("Error al abrir el archivo %s", ruta_archivo);
         return 0;
     }
 
@@ -97,69 +146,102 @@ int iniciar_programa(const char *ruta_archivo){
     return 1;
 }
 
-// los return -1 significan que hubo un error, los prints son temporales para el debug
-int puntero_logico_a_direccion_fisica(uint32_t puntero_l)
+/**
+ * revisa si el sector de memoria iniciando desde el puntero_l de longitud bytes es valido, si lo es retorna opcionalmente en out_pos la posicion del primer byte en la memoria
+ * 
+ * @param puntero_l puntero logico especificando el sector y inicio del 'chunk'
+ * @param bytes tamaño del 'chunk' iniciando en puntero_l
+ * @param out_pos se usa como output opcional de la posicion en memoria del inicio del chunk (opcional porque podes asignale NULL sin problemas)
+ * 
+ * @return booleano, 0 = no valido, 1 = valido
+ */
+int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos)
 {
     uint16_t cod_segmento = puntero_l >> 16;
-    uint16_t offset = puntero_l;                // la mascara 0x0000FFFF esta implisita al pasar de 32 a 16 bits
+    uint16_t offset_primero = puntero_l;
+    uint16_t offset_ultimo = offset_primero + bytes - 1;
 
     if(cod_segmento<0 || cod_segmento>7)
-    {
-        printf("[ERROR:Fallo de segmento] puntero_logico_a_direccion_fisica(puntero_l): puntero logico %08X con codigo de segmento invalido\n", puntero_l);
-        return -1;
-    }
+        //comento el print porque el que recibe el error deberia encargarse de interpretarlo
+        //printf("[ERROR:Fallo de segmento] puntero_logico_a_direccion_fisica(puntero_l): puntero logico %08X con codigo de segmento invalido\n", puntero_l);
+        return 0;
+
     uint32_t segmento = tabla_segmentos[cod_segmento];
+    uint16_t tam_segmento = segmento;
     uint16_t pos_inicio_seg = segmento >> 16;
-    uint16_t tam_segmento = segmento;           // la mascara 0x0000FFFF esta implisita al pasar de 32 a 16 bits
+    uint16_t pos_fin_seg = pos_inicio_seg + tam_segmento; // la posicion del primer byte fuera del segmento
 
-    int pos_fin_seg = pos_inicio_seg + tam_segmento; // la posicion del primer byte fuera del segmento
-    int pos_puntero = pos_inicio_seg + offset;
+    uint16_t pos_primero_chunk = pos_inicio_seg + offset_primero;
+    uint16_t pos_ultimo_chunk = pos_inicio_seg + offset_ultimo;
 
-    if(pos_puntero>=pos_fin_seg || pos_puntero<pos_inicio_seg)
-    {
-        printf("[ERROR:Fallo de segmento] puntero_logico_a_direccion_fisica(puntero_l): puntero logico %08X apunta fuera de su segmento \n", puntero_l);
+    if(pos_primero_chunk<pos_inicio_seg || pos_primero_chunk>=pos_fin_seg || pos_ultimo_chunk>=pos_fin_seg)
+        return 0;
+
+    if(out_pos)
+        *out_pos = (int)pos_primero_chunk;
+    return 1;
+}
+
+/**
+ * retorna la posicion en la memoria del puntero, si el puntero no es valido, retorna -1
+ */
+int puntero_logico_a_direccion_fisica(uint32_t puntero_l)
+{
+    int pos;
+    if(chunk_memoria_valido(puntero_l, 1, &pos))
+        return pos;
+    else
         return -1;
-    }
-
-
-    //printf("puntero_l:     %08X\n", puntero_l);
-    //printf("cod_segmento:  %04X\n", cod_segmento);
-    //printf("offset:        %04X\n\n", offset);
-    //printf("segmento:      %08X\n", segmento);
-
-    return pos_puntero;
 }
 
 
-// pueden leerse de 0 a 4 bytes!
-// lee los bytes desde la direccion fisica ingresada y los junta en un solo valor, el output es siempre de 4 bytes pero pueden leerse de 0 a 4 bytes
-uint32_t leer_memoria(int dir_fisica, uint8_t c_bytes)
+/**
+ * lee de 0 a 4 bytes desde la posicion apuntada por puntero_l
+ * 
+ * @param puntero_l puntero logico al primer byte a leer
+ * @param c_bytes cantidad de bytes a leer, si es 0 data va a valer 0
+ * @param data output de la informacion leida
+ * 
+ * @return se retorna el codigo de error de la operacion 0 = sin error // importante la distincion entre el codigo de error y la informacion, antes ambos eran el return
+ */
+int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data)
 {
-    if(0>c_bytes || c_bytes>4 || 0>dir_fisica || dir_fisica>=SIZE || dir_fisica+c_bytes-1>=SIZE)
+    int dir_fisica;
+    if(!data)
     {
-        // este error no deberia suceder nunca, si sucede es por algo mal hecho nuestro, a diferencia de Instruccion invalida Division por cero o Fallo de segmento que son errores del usuario
-        printf("ERROR: leer_memoria(dir_fisica, c_bytes) recibio una cantidad invalida de bytes a leer(c_bytes: %d)(0<=c_bytes<=4) o una posicion de la memoria fuera de rango(dir_fisica: %d)(0<=dir_fisica<%d) o dir_final=dir_fisica+c_bytes-1 se escapa de la memoria (dir_final: %d)(0<=dir_final<%d) \n", c_bytes, dir_fisica, SIZE, dir_fisica+c_bytes-1, SIZE);
-        return 0xFFFFFFFF;
+        printf("ERROR: leer_memoria() recibio data = NULL!!!\n");
+        return -10; // error nuestro
     }
-
-    uint32_t out = 0;
+    else if(!chunk_memoria_valido(puntero_l, c_bytes, &dir_fisica))
+        return -1; // error de segmento
+    
+    *data = 0;
     for(int i=0; i<c_bytes; i++)
     {
-        out <<= 8;
-        out += memoria[dir_fisica+i];
+        *data <<= 8;
+        *data += memoria[dir_fisica+i];
     }
-    return out;
+    return 0;
 }
 
+/**
+ * @return retorna codigo de error (estaba que 0 es error y 1 es todo ok, pero haciendo que 0 sea todo ok podemos tener multiples codigos de error)  
+ * 0 = OK
+ * -1 = Error de segmento
+ * -2 = Instruccion invalida
+ * -3 = Division por cero
+ */
 int lectura_programa(){
-    uint8_t tipo_p1=0;
-    uint8_t tipo_p2=0;
+    uint8_t tipo_p1 = 0;
+    uint8_t tipo_p2 = 0;
     uint32_t data_p1 = 0;
     uint32_t data_p2 = 0;
     uint32_t tam_instruccion = 1;
-    int32_t dir_ip = puntero_logico_a_direccion_fisica(IP);
-    //if (dir_ip == -1) => Fallo de segmento
-    uint8_t operacion = leer_memoria(dir_ip, 1);
+
+    uint32_t operacion; // tube que hacerlo 32 en vez de 8 para poder pasarlo como parametro uint32_t* de leer_memoria :/
+    if(leer_memoria(IP, 1, &operacion))
+        return -1; // error de segmento
+    
     OPC  = operacion & 0b00011111;
     if (OPC == 0x0F) { 
         // 0 operandos: STOP
@@ -170,7 +252,9 @@ int lectura_programa(){
         tipo_p1 = (operacion >> 6) & 0b00000011; // Bits 7 y 6
         tipo_p2 = 0;
 
-        data_p1 = leer_memoria(dir_ip + 1, tipo_p1);
+        if(leer_memoria(IP+1, tipo_p1, &data_p1))
+            return -1; // error de segmento
+
         tam_instruccion += tipo_p1;
     } 
     else if (OPC >= 0x10 && OPC <= 0x1F) { 
@@ -179,18 +263,22 @@ int lectura_programa(){
         tipo_p1 = ((operacion >> 4) & 0b00000011); // Operando A
 
         // Orden en memoria: primero B, luego A
-        int pos_data_p2 = dir_ip + 1;
-        int pos_data_p1 = pos_data_p2 + tipo_p2;
+        uint32_t pl_p2 = IP+1;
+        uint32_t pl_p1 = IP+1+tipo_p2;
+        
 
-        data_p2 = leer_memoria(pos_data_p2, tipo_p2);
-        data_p1 = leer_memoria(pos_data_p1, tipo_p1);
+        if(
+            leer_memoria(pl_p2, tipo_p2, &data_p1) || 
+            leer_memoria(pl_p1, tipo_p1, &data_p1)
+        )
+            return -1; // error de segmento
 
         tam_instruccion += (tipo_p1 + tipo_p2);
     } 
     else {
         printf("[ERROR: Instruccion invalida] Opcode %02X no existe.\n", OPC); //
         IP = (int32_t)0xFFFFFFFF;
-        return 0;
+        return -2;
     }
     OP1 = tipo_p1<<24;
     OP1 += data_p1;
@@ -202,5 +290,5 @@ int lectura_programa(){
     printf("tipo o:    %02X\n", OPC);
     printf("tipo p1:   %d  data: %08X\n", tipo_p1, data_p1);
     printf("tipo p2:   %d  data: %08X\n", tipo_p2, data_p2);
-    return 1;
+    return 0;
 }
