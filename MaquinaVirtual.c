@@ -11,17 +11,35 @@
 #define LAR registros[4]
 #define MAR registros[5]
 #define MBR registros[6]
+#define EAX registros[10]
+#define EBX registros[11]
+#define ECX registros[12]
+#define EDX registros[13]
+#define EEX registros[14]
+#define EFX registros[15]
 #define CS registros[26]
 #define DS registros[27]
+
+
+
+// Memoria y Registros
+uint8_t memoria[SIZE];
+int32_t registros[32] = {0};
+int32_t tabla_segmentos[8];
+
+char formatos_sys[] = { 'd', 'c', 'o', 'X'/*, 'b' binario se implementa a mano*/ };
+// Tabla de segmentos: 8 entradas de 32 bits 
 
 // predefinicion operaciones
 int opc_stop();
 
-int opc_1placeholder(uint32_t op1){ printf("placeholder de operacion de 1 param. OPC: %02X\n", OPC); return 0;}
+int opc_sys(uint32_t);
+int opc_1placeholder(uint32_t op1){ printf("operacion no implementada. OPC: %02X OP1: %08X\n", OPC, op1); return 0;}
 
 int opc_mov(uint32_t, uint32_t);
-int opc_2placeholder(uint32_t op1, uint32_t op2){ printf("placeholder de operacion de 2 param. OPC: %02X\n", OPC); return 0;}
-
+int opc_ldl(uint32_t, uint32_t);
+int opc_ldh(uint32_t, uint32_t);
+int opc_2placeholder(uint32_t op1, uint32_t op2){ printf("operacion no implementada. OPC: %02X OP1: %08X OP2: %08X\n", OPC, op1, op2); return 0;}
 
 
 // Tipos de las funciones de 2 y 1 parametros
@@ -30,7 +48,7 @@ typedef int(*operacion_1_param)(uint32_t);
 
 // Arrays de funciones de 1 y 2 parametros
 operacion_2_params operaciones_2_params[] = {
-    opc_mov,
+    opc_mov,//MOV
     opc_2placeholder,//ADD   placeholders por si queremos ir desarrollandolas en cualquier orden
     opc_2placeholder,//SUB
     opc_2placeholder,//MUL
@@ -43,12 +61,12 @@ operacion_2_params operaciones_2_params[] = {
     opc_2placeholder,//SHL
     opc_2placeholder,//SHR
     opc_2placeholder,//SAR
-    opc_2placeholder,//LDL
-    opc_2placeholder,//LDX
+    opc_ldl,//LDL
+    opc_ldh,//LDH
     opc_2placeholder //RND
 };
 operacion_1_param operaciones_1_param[] = {
-    opc_1placeholder,//SYS
+    opc_sys,//SYS
     opc_1placeholder,//JMP
     opc_1placeholder,//JP
     opc_1placeholder,//JN
@@ -64,13 +82,7 @@ operacion_1_param operaciones_1_param[] = {
 
 
 
-// Memoria y Registros
-uint8_t memoria[SIZE];
-int32_t registros[32] = {0};
-int32_t tabla_segmentos[8];
-// Tabla de segmentos: 8 entradas de 32 bits 
-
-int puntero_logico_a_direccion_fisica(uint32_t puntero_l);
+int puntero_logico_a_direccion_fisica(uint32_t puntero_l, int* dir);
 int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos);
 int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data);
 int escribir_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t data);
@@ -82,7 +94,7 @@ int main(int argc, char **argv){
     char nombre_archivo[] = "asmtest.vmx";
     int flag_on = 0;
     
-    /* input del archivo por consola, funciona bien pero lo dejo comentado para testear mas comodo
+    /* input del archivo por consola, funciona bien pero lo dejo comentado para testear mas comodo 
 
     if(argc<2 || argc>3) // si tiene 1 o 2 parametros (argv[0] siempre tiene la direccion del exe)
     {
@@ -119,7 +131,7 @@ int main(int argc, char **argv){
     while ((IP != (int32_t)0xFFFFFFFF) && ((IP & 0xFFFF) < tam_codigo)) {
         printf("\n[Fetch en IP = %08X]\n", IP);
         if (err=lectura_programa()) {
-            printf("Deteniendo lectura por error o STOP.\n");
+            printf("Deteniendo lectura por error o STOP. errcode:%d\n", err);
             break;
         }
     }
@@ -130,16 +142,18 @@ int main(int argc, char **argv){
         printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]);
 
     printf("\n Code Segment: \n");
-    int dir_cs = puntero_logico_a_direccion_fisica(CS);
-    int tam_cs = puntero_logico_a_direccion_fisica(DS);
+    int dir_cs, tam_cs;
+    puntero_logico_a_direccion_fisica(CS, &dir_cs);
+    puntero_logico_a_direccion_fisica(DS, &tam_cs);
     for(int i=dir_cs; i<dir_cs+tam_cs; i++)
         printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
 
     printf("\n Data Segment: \n");
-    int dir_ds = puntero_logico_a_direccion_fisica(DS);
+    int dir_ds;
+    puntero_logico_a_direccion_fisica(DS, &dir_ds);
     for(int i=dir_ds; i<dir_ds+16; i++)
         printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
-    printf("...\n");
+    printf(" ...\n");
     return 0;
 }
 
@@ -219,13 +233,16 @@ int iniciar_programa(const char *ruta_archivo){
  * revisa si el sector de memoria iniciando desde el puntero_l de longitud bytes es valido, si lo es retorna opcionalmente en out_pos la posicion del primer byte en la memoria
  * 
  * @param puntero_l puntero logico especificando el sector y inicio del 'chunk'
- * @param bytes tamaño del 'chunk' iniciando en puntero_l
+ * @param bytes tamaño del 'chunk' iniciando en puntero_l, si es 0 no se hace ninguna verificacion
  * @param out_pos se usa como output opcional de la posicion en memoria del inicio del chunk (opcional porque podes asignale NULL sin problemas)
  * 
  * @return booleano, 0 = no valido, 1 = valido
  */
 int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos)
 {
+    if(bytes==0)
+        return 1;
+
     uint16_t cod_segmento = puntero_l >> 16;
     uint16_t offset_primero = puntero_l;
     uint16_t offset_ultimo = offset_primero + bytes - 1;
@@ -252,15 +269,18 @@ int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos)
 }
 
 /**
- * retorna la posicion en la memoria del puntero, si el puntero no es valido, retorna -1
+ * calcula la direccion fisica a la que apunta un puntero logico
+ * 
+ * @param puntero_l puntero logico
+ * @param dir parametro de salida con la direccion fisica
+ * 
+ * @return codigo de error 0=OK -1=Fallo de segmento
  */
-int puntero_logico_a_direccion_fisica(uint32_t puntero_l)
+int puntero_logico_a_direccion_fisica(uint32_t puntero_l, int* dir)
 {
-    int pos;
-    if(chunk_memoria_valido(puntero_l, 1, &pos))
-        return pos;
-    else
+    if(!chunk_memoria_valido(puntero_l, 1, dir))
         return -1;
+    return 0;
 }
 
 
@@ -370,7 +390,7 @@ int lectura_programa(){
     OP2 += data_p2;
     IP += tam_instruccion;// desplazo IP a la siguiente instruccion
 
-    printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
+    //printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
 
     uint8_t index_c = OPC;
     int err;
@@ -384,7 +404,6 @@ int lectura_programa(){
     {
         if(index_c<0 || index_c>0x0A)
             return -2; // Instruccion invalida
-        
         err = operaciones_1_param[index_c](OP1);
     }
     else // 2 params
@@ -394,12 +413,13 @@ int lectura_programa(){
             return -2; // Instruccion invalida
         err = operaciones_2_params[index_c](OP1, OP2); 
     }
-
+    /*
     printf("operacion: %02X\n", operacion); // out de debug para tantear los valores leidos
     printf("tipo o:    %02X\n", OPC);
     printf("tipo p1:   %d  data: %08X\n", tipo_p1, data_p1);
     printf("tipo p2:   %d  data: %08X\n", tipo_p2, data_p2);
     printf("err code:  %d\n", err);
+    */
     return err;
 }
 
@@ -485,3 +505,131 @@ int opc_mov(uint32_t op1, uint32_t op2)
     return 0;
 }
 
+int opc_ldl(uint32_t op1, uint32_t op2)
+{
+    uint32_t dato_op1;
+    int err = get_dato_op(op1, &dato_op1);
+    if(err)
+        return err;
+
+    uint32_t dato_op2;
+    err = get_dato_op(op2, &dato_op2);
+    if(err)
+        return err;
+
+    dato_op1 &= 0xFFFF0000;
+    dato_op2 &= 0x0000FFFF;
+    dato_op1 |= dato_op2;
+    
+    err = set_dato_op(op1, dato_op1);
+    if(err)
+        return err;
+    
+    return 0;
+}
+
+int opc_ldh(uint32_t op1, uint32_t op2)
+{
+    uint32_t dato_op1;
+    int err = get_dato_op(op1, &dato_op1);
+    if(err)
+        return err;
+
+    uint32_t dato_op2;
+    err = get_dato_op(op2, &dato_op2);
+    if(err)
+        return err;
+
+
+    dato_op1 &= 0x0000FFFF;
+    dato_op2 &= 0x0000FFFF; // dejo los ultimos 2 bytes
+    dato_op2 <<= 16; //        los muevo a la parte alta
+    dato_op1 |= dato_op2;
+    
+    
+    err = set_dato_op(op1, dato_op1);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+
+int opc_sys(uint32_t op1)
+{
+    uint32_t dato_op1;
+    int err = get_dato_op(op1, &dato_op1);
+    if(err)
+        return err;
+    dato_op1 &= 0x0000001F; // dejo solo los ultimos 5 bits
+
+
+    uint16_t c_vals = ECX;
+    uint16_t tam_vals = ECX>>16;
+    uint32_t puntero_l = EDX;
+
+    int dir_puntero;
+
+    
+    
+    switch(dato_op1){
+        case 1:
+            // -- seccion pendiente de cambio, bastane fea y seguro se pueda hacer algo que funcione para el SYS 1 y SYS 2
+            int index_format=0;
+            uint8_t bit_mask = 0x00000001;
+            for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++)
+                bit_mask <<= 1;
+            
+            if(index_format>4)
+            {
+                printf("ERROR ejecutando SYS, EAX no tiene un valor valido\n");
+                return -10;
+            }
+            // --
+            
+            for(int i=0; i<c_vals; i++)
+            {
+                
+                if(puntero_logico_a_direccion_fisica(puntero_l, &dir_puntero)) return -1;
+                printf("[%04X]: ", dir_puntero);
+
+                uint32_t input=0;
+
+                if(index_format!=4) // binario es mas raro
+                {
+                    
+                    char scanf_format[3] = "% ";
+                    scanf_format[1] = formatos_sys[index_format]; // relleno el espacio en scanf_format con el formato del input
+                    
+                    scanf(scanf_format, &input);
+
+                }
+                else // formato binario, incomodo
+                {
+                    char b_input[32];
+                    scanf("%s", b_input);
+                    int bits = strlen(b_input);
+                    for(int j=0; j<bits; j++)
+                    {
+                        input <<= 1; // creo un espacio para el sig bit
+                        if(b_input[j]!='0')
+                            input |= 1; // si es 1, lo relleno con 1
+                    }
+                }
+
+                if(escribir_memoria(puntero_l, tam_vals, input))
+                    return -1;
+                puntero_l+=tam_vals;
+            }
+            
+
+
+            break;
+        case 2:
+            break;
+        default:
+            printf("ERROR SYS recibio un valor que no es 1 ni 2\n");
+            return -10;
+    }
+    return 0;
+}
