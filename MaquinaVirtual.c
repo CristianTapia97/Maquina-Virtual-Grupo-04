@@ -398,7 +398,7 @@ int lectura_programa(){
     OP2 += data_p2;
     IP += tam_instruccion;// desplazo IP a la siguiente instruccion
 
-    printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
+    /*printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);*/
 
     uint8_t index_c = OPC;
     int err;
@@ -421,13 +421,13 @@ int lectura_programa(){
             return -2; // Instruccion invalida
         err = operaciones_2_params[index_c](OP1, OP2);
     }
-    /*
+
     printf("operacion: %02X\n", operacion); // out de debug para tantear los valores leidos
     printf("tipo o:    %02X\n", OPC);
     printf("tipo p1:   %d  data: %08X\n", tipo_p1, data_p1);
     printf("tipo p2:   %d  data: %08X\n", tipo_p2, data_p2);
     printf("err code:  %d\n", err);
-    */
+
     return err;
 }
 
