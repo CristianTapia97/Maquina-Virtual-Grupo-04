@@ -56,7 +56,7 @@ typedef int(*operacion_1_param)(uint32_t);
 operacion_2_params operaciones_2_params[] = {
     opc_mov,//MOV
     opc_add,//ADD   placeholders por si queremos ir desarrollandolas en cualquier orden
-    opc_2placeholder,//SUB
+    opc_sub,//SUB
     opc_2placeholder,//MUL
     opc_2placeholder,//DIV
     opc_2placeholder,//CMP
@@ -500,14 +500,14 @@ int opc_stop()
 void set_flags(uint32_t res, int n, int z, int c, int v) {
     uint32_t cc = 0;
     if (n)
-        cc |= FLAG_N;
+        cc = cc || FLAG_N;
     if (z)
-        cc |= FLAG_Z;
+        cc = cc || FLAG_Z;
     if (c)
-        cc |= FLAG_C;
+        cc = cc || FLAG_C;
     if (v)
-        cc |= FLAG_V;
-    reg[CC] = cc; // CC es el registro 17
+        cc = cc || FLAG_V;
+    registros[17] = cc; //registro 17 es el CC, lleva en 1 en los 4 bits mas significativos si se activa alguna flag (red flag)
 }
 
 int opc_mov(uint32_t op1, uint32_t op2)
@@ -517,6 +517,7 @@ int opc_mov(uint32_t op1, uint32_t op2)
     if(err)
         return err;
 
+    set_flags(dato_op2, (int32_t)dato_op2 < 0, dato_op2 == 0, 0, 0); //carga en CC si es cero o negativo
     err = set_dato_op(op1, dato_op2);
     if(err)
         return err;
@@ -526,26 +527,62 @@ int opc_mov(uint32_t op1, uint32_t op2)
 
 int opc_add(uint32_t op1, uint32_t op2)
 {
-    uint32_t a, b;
+    uint32_t a, b, res;
     int err = get_dato_op(op1, &a);
-    if (err) return err;
+    if (err)
+        return err;
 
     err = get_dato_op(op2, &b);
-    if (err) return err;
+    if (err)
+        return err;
 
-    uint32_t res = a + b;
+    res = a + b;
 
     // Flags
-    int n = ((int32_t)res < 0);
-    int z = (res == 0);
-    int c = (res < a); // Acarreo en suma sin signo
+    int n = (((uint32_t)res < 0); // resultado negativo
+    int z = (res == 0); //resultado igual a cerop
+    int c = (res < a); // acarreo en suma sin signo
     // Overflow con signo: si signos iguales dan signo opuesto
     int v = (((a ^ res) & (b ^ res) & 0x80000000U) != 0);
 
     set_flags(res, n, z, c, v);
 
-    return set_dato_op(op1, res);
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
 }
+
+int opc_sub(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err = get_dato_op(op1, &a);
+    if (err)
+        return err;
+
+    err = get_dato_op(op2, &b);
+    if (err)
+        return err;
+
+    res = a - b;
+
+    // Flags
+    int n = (((uint32_t)res < 0); // resultado negativo
+    int z = (res == 0); //resultado igual a cerop
+    int c = (a < b); // si a es menor a b, el numero es negativo
+    // Overflow con signo: si signos iguales dan signo opuesto
+    int v = (((a ^ b) & (a ^ res) & 0x80000000U) != 0);
+
+    set_flags(res, n, z, c, v);
+
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
 
 int opc_ldl(uint32_t op1, uint32_t op2)
 {
