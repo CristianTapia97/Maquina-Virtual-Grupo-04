@@ -44,6 +44,8 @@ int opc_1placeholder(uint32_t op1){ printf("operacion no implementada. OPC: %02X
 int opc_mov(uint32_t, uint32_t); //afeccta el registro CC
 int opc_add(uint32_t, uint32_t); //afecta el registro CC
 int opc_sub(uint32_t, uint32_t); //afecta el registro CC
+int opc_mul(uint32_t, uint32_t); //afecta el registro CC
+int opc_div(uint32_t, uint32_t); //afecta el registro CC
 int opc_xor(uint32_t, uint32_t); //afecta el registro CC
 int opc_ldl(uint32_t, uint32_t);
 int opc_ldh(uint32_t, uint32_t);
@@ -59,9 +61,9 @@ operacion_2_params operaciones_2_params[] = {
     opc_mov,//MOV
     opc_add,//ADD   placeholders por si queremos ir desarrollandolas en cualquier orden
     opc_sub,//SUB
-    opc_2placeholder,//MUL
-    opc_2placeholder,//DIV
-    opc_2placeholder,//CMP
+    opc_mul,//MUL
+    opc_div,//DIV
+    opc_2placeholder,//CMPs
     opc_2placeholder,//AND
     opc_2placeholder,//OR
     opc_xor,//XOR
@@ -580,6 +582,65 @@ int opc_sub(uint32_t op1, uint32_t op2)
 
     err = set_dato_op(op1, res);
     if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_mul(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err = get_dato_op(op1, &a);
+    if (err)
+        return err;
+    err = get_dato_op(op2, &b);
+    if (err)
+        return err;
+    res = a * b;
+
+    // Flags
+    int n = (uint32_t)res < 0; // resultado negativo
+    int z = res == 0; //resultado igual a cerop
+    int c = res > 2147483846 || res < -2147483846; // acarreo en la multiplicacion, si hay acarreo tambien hay overflow
+    int v = c;
+
+    set_flags(n, z, c, v);
+
+    err = set_dato_op(op1, res);
+    if (err)
+        return err;
+
+    return 0;
+}
+
+int opc_div(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err = get_dato_op(op1, &a);
+    if (err)
+        return err;
+    err = get_dato_op(op2, &b);
+    if (err)
+        return err;
+
+    if (b==0)
+        return -1; //no se puede dividir por cero
+
+    res = a / b;
+
+    // Flags
+    int n = (uint32_t)res < 0; // resultado negativo
+
+    // Caso especial de overflow en división con signo: INT32_MIN / -1
+    if (a == -2147483648 && b == -1) {
+        uint32_t res = (uint32_t)a;
+        set_flags(n,0,1,1);
+    } else {
+        set_flags(n, 0, 0, 0);
+    }
+
+    err = set_dato_op(op1, res);
+    if (err)
         return err;
 
     return 0;
