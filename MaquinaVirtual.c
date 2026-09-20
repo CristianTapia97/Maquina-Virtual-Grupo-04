@@ -33,7 +33,7 @@ char formatos_sys[] = { 'd', 'c', 'o', 'X'/*, 'b' binario se implementa a mano*/
 // Tabla de segmentos: 8 entradas de 32 bits
 
 //para el registro CC, lleva el bit de signo, de cero, de acarreo y desbordamiento
-void set_flags(uint32_t res, int n, int z, int c, int v);
+void set_flags(int n, int z, int c, int v);
 
 // predefinicion operaciones
 int opc_stop();
@@ -398,7 +398,7 @@ int lectura_programa(){
     OP2 += data_p2;
     IP += tam_instruccion;// desplazo IP a la siguiente instruccion
 
-    //printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
+    printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
 
     uint8_t index_c = OPC;
     int err;
@@ -499,7 +499,7 @@ int opc_stop()
     return 0;
 }
 
-void set_flags(uint32_t res, int n, int z, int c, int v) {
+void set_flags(int n, int z, int c, int v) {
     uint32_t cc = 0;
     if (n)
         cc = cc || FLAG_N;
@@ -519,7 +519,7 @@ int opc_mov(uint32_t op1, uint32_t op2)
     if(err)
         return err;
 
-    set_flags(dato_op2, (int32_t)dato_op2 < 0, dato_op2 == 0, 0, 0); //carga en CC si es cero o negativo
+    set_flags((int32_t)dato_op2 < 0, dato_op2 == 0, 0, 0); //carga en CC si es cero o negativo
     err = set_dato_op(op1, dato_op2);
     if(err)
         return err;
@@ -541,16 +541,16 @@ int opc_add(uint32_t op1, uint32_t op2)
     res = a + b;
 
     // Flags
-    int n = (((uint32_t)res < 0); // resultado negativo
+    int n = (uint32_t)res < 0; // resultado negativo
     int z = (res == 0); //resultado igual a cerop
     int c = (res < a); // acarreo en suma sin signo
     // Overflow con signo: si signos iguales dan signo opuesto
     int v = (((a ^ res) & (b ^ res) & 0x80000000U) != 0);
 
-    set_flags(res, n, z, c, v);
+    set_flags(n, z, c, v);
 
     err = set_dato_op(op1, res);
-    if(err)
+    if (err)
         return err;
 
     return 0;
@@ -570,13 +570,13 @@ int opc_sub(uint32_t op1, uint32_t op2)
     res = a - b;
 
     // Flags
-    int n = (((uint32_t)res < 0); // resultado negativo
+    int n = (uint32_t)res < 0; // resultado negativo
     int z = (res == 0); //resultado igual a cerop
     int c = (a < b); // si a es menor a b, el numero es negativo
     // Overflow con signo: si signos iguales dan signo opuesto
     int v = (((a ^ b) & (a ^ res) & 0x80000000U) != 0);
 
-    set_flags(res, n, z, c, v);
+    set_flags(n, z, c, v);
 
     err = set_dato_op(op1, res);
     if(err)
