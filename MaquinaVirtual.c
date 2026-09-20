@@ -43,6 +43,8 @@ int opc_1placeholder(uint32_t op1){ printf("operacion no implementada. OPC: %02X
 
 int opc_mov(uint32_t, uint32_t); //afeccta el registro CC
 int opc_add(uint32_t, uint32_t); //afecta el registro CC
+int opc_sub(uint32_t, uint32_t); //afecta el registro CC
+int opc_xor(uint32_t, uint32_t); //afecta el registro CC
 int opc_ldl(uint32_t, uint32_t);
 int opc_ldh(uint32_t, uint32_t);
 int opc_2placeholder(uint32_t op1, uint32_t op2){ printf("operacion no implementada. OPC: %02X OP1: %08X OP2: %08X\n", OPC, op1, op2); return 0;}
@@ -62,7 +64,7 @@ operacion_2_params operaciones_2_params[] = {
     opc_2placeholder,//CMP
     opc_2placeholder,//AND
     opc_2placeholder,//OR
-    opc_2placeholder,//XOR
+    opc_xor,//XOR
     opc_2placeholder,//SWAP
     opc_2placeholder,//SHL
     opc_2placeholder,//SHR
@@ -583,6 +585,25 @@ int opc_sub(uint32_t op1, uint32_t op2)
     return 0;
 }
 
+int opc_xor(uint32_t op1, uint32_t op2)
+{
+    uint32_t a,b,res;
+    int err = get_dato_op(op1, &a);
+    if(err)
+        return err;
+
+    err = get_dato_op(op2,&b);
+    if(err)
+        return err;
+
+    res = a ^ b;
+    set_flags((int32_t)res < 0, res == 0, 0, 0); //carga en CC si es cero o negativo
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
 
 int opc_ldl(uint32_t op1, uint32_t op2)
 {
