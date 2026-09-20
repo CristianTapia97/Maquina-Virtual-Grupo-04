@@ -17,6 +17,7 @@
 #define EDX registros[13]
 #define EEX registros[14]
 #define EFX registros[15]
+#define CC registros[17]
 #define CS registros[26]
 #define DS registros[27]
 #define FLAG_N (1U << 31)
@@ -39,6 +40,16 @@ void set_flags(int n, int z, int c, int v);
 int opc_stop();
 
 int opc_sys(uint32_t);
+int opc_not(uint32_t op1);//afecta el registro CC
+int opc_jmp(uint32_t op1);
+int opc_jp(uint32_t op1);
+int opc_jn(uint32_t op1);
+int opc_jz(uint32_t op1);
+int opc_jc(uint32_t op1);
+int opc_jv(uint32_t op1);
+int opc_jnp(uint32_t op1);
+int opc_jnn(uint32_t op1);
+int opc_jnz(uint32_t op1);
 int opc_1placeholder(uint32_t op1){ printf("operacion no implementada. OPC: %02X OP1: %08X\n", OPC, op1); return 0;}
 
 int opc_mov(uint32_t, uint32_t); //afeccta el registro CC
@@ -77,16 +88,16 @@ operacion_2_params operaciones_2_params[] = {
 };
 operacion_1_param operaciones_1_param[] = {
     opc_sys,//SYS
-    opc_1placeholder,//JMP
-    opc_1placeholder,//JP
-    opc_1placeholder,//JN
-    opc_1placeholder,//JZ
-    opc_1placeholder,//JC
-    opc_1placeholder,//JV
-    opc_1placeholder,//JNP
-    opc_1placeholder,//JNN
-    opc_1placeholder,//JNZ
-    opc_1placeholder //NOT
+    opc_jmp,//JMP
+    opc_jp,//JP
+    opc_jn,//JN
+    opc_jz,//JZ
+    opc_jc,//JC
+    opc_jv,//JV
+    opc_jnp,//JNP
+    opc_jnn,//JNN
+    opc_jnz,//JNZ
+    opc_not //NOT
 };
 
 
@@ -400,7 +411,7 @@ int lectura_programa(){
     OP2 += data_p2;
     IP += tam_instruccion;// desplazo IP a la siguiente instruccion
 
-    /*printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);*/
+    //printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
 
     uint8_t index_c = OPC;
     int err;
@@ -511,7 +522,7 @@ void set_flags(int n, int z, int c, int v) {
         cc = cc || FLAG_C;
     if (v)
         cc = cc || FLAG_V;
-    registros[17] = cc; //registro 17 es el CC, lleva en 1 en los 4 bits mas significativos si se activa alguna flag (red flag)
+    CC = cc; //registro 17 es el CC, lleva en 1 en los 4 bits mas significativos si se activa alguna flag (red flag)
 }
 
 int opc_mov(uint32_t op1, uint32_t op2)
@@ -793,4 +804,285 @@ int opc_sys(uint32_t op1)
             return -10;
     }
     return 0;
+}
+
+int opc_add(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err = get_dato_op(op1, &a);
+    if (err)
+        return err;
+
+    err = get_dato_op(op2, &b);
+    if (err)
+        return err;
+
+    res = a + b;
+
+    // Flags
+    int n = (((uint32_t)res < 0)); // resultado negativo
+    int z = (res == 0); //resultado igual a cerop
+    int c = (res < a); // acarreo en suma sin signo
+    // Overflow con signo: si signos iguales dan signo opuesto
+    int v = (((a ^ res) & (b ^ res) & 0x80000000U) != 0);
+
+    set_flags(n, z, c, v);
+
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_sub(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err = get_dato_op(op1, &a);
+    if (err)
+        return err;
+
+    err = get_dato_op(op2, &b);
+    if (err)
+        return err;
+
+    res = a - b;
+
+    // Flags
+    int n = (((uint32_t)res < 0)); // resultado negativo
+    int z = (res == 0); //resultado igual a cerop
+    int c = (a < b); // si a es menor a b, el numero es negativo
+    // Overflow con signo: si signos iguales dan signo opuesto
+    int v = (((a ^ b) & (a ^ res) & 0x80000000U) != 0);
+
+    set_flags(n, z, c, v);
+
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_xor(uint32_t op1, uint32_t op2)
+{
+    uint32_t a,b,res;
+    int err = get_dato_op(op1, &a);
+    if(err)
+        return err;
+
+    err = get_dato_op(op2,&b);
+    if(err)
+        return err;
+
+    res = a ^ b;
+    set_flags((int32_t)res < 0, res == 0, 0, 0); //carga en CC si es cero o negativo
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_ldl(uint32_t op1, uint32_t op2)
+{
+    uint32_t dato_op1;
+    int err = get_dato_op(op1, &dato_op1);
+    if(err)
+        return err;
+
+    uint32_t dato_op2;
+    err = get_dato_op(op2, &dato_op2);
+    if(err)
+        return err;
+
+    dato_op1 &= 0xFFFF0000;
+    dato_op2 &= 0x0000FFFF;
+    dato_op1 |= dato_op2;
+
+    err = set_dato_op(op1, dato_op1);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_ldh(uint32_t op1, uint32_t op2)
+{
+    uint32_t dato_op1;
+    int err = get_dato_op(op1, &dato_op1);
+    if(err)
+        return err;
+
+    uint32_t dato_op2;
+    err = get_dato_op(op2, &dato_op2);
+    if(err)
+        return err;
+
+
+    dato_op1 &= 0x0000FFFF;
+    dato_op2 &= 0x0000FFFF; // dejo los ultimos 2 bytes
+    dato_op2 <<= 16; //        los muevo a la parte alta
+    dato_op1 |= dato_op2;
+
+
+    err = set_dato_op(op1, dato_op1);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+
+int opc_sys(uint32_t op1)
+{
+    uint32_t dato_op1;
+    int err = get_dato_op(op1, &dato_op1);
+    if(err)
+        return err;
+    dato_op1 &= 0x0000001F; // dejo solo los ultimos 5 bits
+
+
+    uint16_t c_vals = ECX;
+    uint16_t tam_vals = ECX>>16;
+    uint32_t puntero_l = EDX;
+
+    int dir_puntero;
+
+
+
+    switch(dato_op1){
+        case 1:
+            // -- seccion pendiente de cambio, bastane fea y seguro se pueda hacer algo que funcione para el SYS 1 y SYS 2
+            int index_format=0;
+            uint8_t bit_mask = 0x00000001;
+            for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++)
+                bit_mask <<= 1;
+
+            if(index_format>4)
+            {
+                printf("ERROR ejecutando SYS, EAX no tiene un valor valido\n");
+                return -10;
+            }
+            // --
+
+            for(int i=0; i<c_vals; i++)
+            {
+
+                if(puntero_logico_a_direccion_fisica(puntero_l, &dir_puntero)) return -1;
+                printf("[%04X]: ", dir_puntero);
+
+                uint32_t input=0;
+
+                if(index_format!=4) // binario es mas raro
+                {
+
+                    char scanf_format[3] = "% ";
+                    scanf_format[1] = formatos_sys[index_format]; // relleno el espacio en scanf_format con el formato del input
+
+                    scanf(scanf_format, &input);
+
+                }
+                else // formato binario, incomodo
+                {
+                    char b_input[32];
+                    scanf("%s", b_input);
+                    int bits = strlen(b_input);
+                    for(int j=0; j<bits; j++)
+                    {
+                        input <<= 1; // creo un espacio para el sig bit
+                        if(b_input[j]!='0')
+                            input |= 1; // si es 1, lo relleno con 1
+                    }
+                }
+
+                if(escribir_memoria(puntero_l, tam_vals, input))
+                    return -1;
+                puntero_l+=tam_vals;
+            }
+
+
+
+            break;
+        case 2:
+            break;
+        default:
+            printf("ERROR SYS recibio un valor que no es 1 ni 2\n");
+            return -10;
+    }
+    return 0;
+}
+
+
+int opc_not(uint32_t op1){
+
+    int32_t val;
+    int err = get_dato_op(op1, &val);
+    if (err) return err;
+
+    uint32_t res = ~((uint32_t)val);
+    int n = ((int32_t)res < 0);
+    int z = (res == 0);
+    set_flags(n, z, 0, 0);
+
+    return set_dato_op(op1, (int32_t)res);
+}
+
+int opc_jmp(uint32_t op1)
+{
+    int32_t destino;
+    int err = get_dato_op(op1, &destino);
+    if (err) 
+        return err;
+
+    IP = CS | ((uint32_t)destino & 0xFFFF); //por si en el futuro CS no esta en el segmento 0
+    return 0;
+}
+int opc_jp(uint32_t op1)  { // Positivo estricto
+    if( (CC & FLAG_N) == 0 && (CC & FLAG_Z) == 0)
+        return opc_jmp(op1);
+    else 
+        return 0;
+}
+int opc_jn(uint32_t op1){ // Negativo
+    if( (CC & FLAG_N) != 0)
+        return opc_jmp(op1);
+    else 
+        return 0; 
+}            
+int opc_jz(uint32_t op1)  { //Cero
+    if( (CC & FLAG_Z) != 0)
+        return opc_jmp(op1);
+    else 
+        return 0; 
+} 
+int opc_jc(uint32_t op1)  { //Carry
+    if( (CC & FLAG_C) != 0)
+        return opc_jmp(op1);
+    else 
+        return 0; 
+} // Carry
+int opc_jv(uint32_t op1)  { //Overflow
+    if( (CC & FLAG_V) != 0)
+        return opc_jmp(op1);
+    else 
+        return 0;
+}
+int opc_jnp(uint32_t op1) { // No positivo (<= 0)
+    if( (CC & FLAG_N) != 0 || (CC & FLAG_Z) != 0)
+        return opc_jmp(op1);
+    else 
+        return 0; 
+} 
+int opc_jnn(uint32_t op1) { // No negativo (>= 0)
+    if( (CC & FLAG_N) == 0)
+        return opc_jmp(op1);
+    else 
+        return 0; 
+}            
+int opc_jnz(uint32_t op1) { 
+    if( (CC & FLAG_Z) == 0)
+        return opc_jmp(op1);
+    else 
+        return 0; 
 }
