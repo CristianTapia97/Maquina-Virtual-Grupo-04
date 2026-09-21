@@ -53,7 +53,7 @@ int opc_jnn(uint32_t op1);
 int opc_jnz(uint32_t op1);
 int opc_1placeholder(uint32_t op1){ printf("operacion no implementada. OPC: %02X OP1: %08X\n", OPC, op1); return 0;}
 
-int opc_mov(uint32_t, uint32_t); //afeccta el registro CC
+int opc_mov(uint32_t, uint32_t); //afecta el registro CC
 int opc_add(uint32_t, uint32_t); //afecta el registro CC
 int opc_sub(uint32_t, uint32_t); //afecta el registro CC
 int opc_mul(uint32_t, uint32_t); //afecta el registro CC
@@ -61,6 +61,7 @@ int opc_div(uint32_t, uint32_t); //afecta el registro CC
 int opc_xor(uint32_t, uint32_t); //afecta el registro CC
 int opc_ldl(uint32_t, uint32_t);
 int opc_ldh(uint32_t, uint32_t);
+int opc_cmp(uint32_t, uint32_t);
 int opc_2placeholder(uint32_t op1, uint32_t op2){ printf("operacion no implementada. OPC: %02X OP1: %08X OP2: %08X\n", OPC, op1, op2); return 0;}
 
 
@@ -75,7 +76,7 @@ operacion_2_params operaciones_2_params[] = {
     opc_sub,//SUB
     opc_mul,//MUL
     opc_div,//DIV
-    opc_2placeholder,//CMPs
+    opc_cmp,//CMPs
     opc_2placeholder,//AND
     opc_2placeholder,//OR
     opc_xor,//XOR
@@ -113,7 +114,7 @@ int iniciar_programa(const char *ruta_archivo);
 int str_termina_con(char* str, char* sufijo);
 
 int main(int argc, char **argv){
-    char nombre_archivo[] = "asmtest.vmx";
+    char nombre_archivo[] = "ej7.vmx";
     int flag_on = 0;
 
     /* input del archivo por consola, funciona bien pero lo dejo comentado para testear mas comodo
@@ -151,14 +152,14 @@ int main(int argc, char **argv){
     int err;
     // Recorre instrucción por instrucción hasta que IP alcance el fin del código o dé error
     while ((IP != (int32_t)0xFFFFFFFF) && ((IP & 0xFFFF) < tam_codigo)) {
-        printf("\n[Fetch en IP = %08X]\n", IP);
+        //printf("\n[Fetch en IP = %08X]\n", IP);
         if (err=lectura_programa()) {
             printf("Deteniendo lectura por error o STOP. errcode:%d\n", err);
             break;
         }
     }
 
-
+    
     printf("\n Registros:\n");
     for(int i=0; i<32; i++)
         printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]);
@@ -265,7 +266,7 @@ int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos)
     if(bytes==0)
         return 1;
 
-    uint16_t cod_segmento = puntero_l >> 16;
+    int16_t cod_segmento = puntero_l >> 16;
     uint16_t offset_primero = puntero_l;
     uint16_t offset_ultimo = offset_primero + bytes - 1;
 
@@ -412,7 +413,7 @@ int lectura_programa(){
     OP2 += data_p2;
     IP += tam_instruccion;// desplazo IP a la siguiente instruccion
 
-    //printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
+    printf("IP %08X  OPC %08X  OP1 %08X  OP2 %08X\n", IP, OPC, OP1, OP2);
 
     uint8_t index_c = OPC;
     int err;
@@ -516,13 +517,13 @@ int opc_stop()
 void set_flags(int n, int z, int c, int v) {
     uint32_t cc = 0;
     if (n)
-        cc = cc || FLAG_N;
+        cc = cc | FLAG_N;
     if (z)
-        cc = cc || FLAG_Z;
+        cc = cc | FLAG_Z;
     if (c)
-        cc = cc || FLAG_C;
+        cc = cc | FLAG_C;
     if (v)
-        cc = cc || FLAG_V;
+        cc = cc | FLAG_V;
     CC = cc; //registro 17 es el CC, lleva en 1 en los 4 bits mas significativos si se activa alguna flag (red flag)
 }
 
@@ -583,7 +584,7 @@ int opc_sub(uint32_t op1, uint32_t op2)
     res = a - b;
 
     // Flags
-    int n = (uint32_t)res < 0; // resultado negativo
+    int n = res < 0; // resultado negativo
     int z = (res == 0); //resultado igual a cerop
     int c = (a < b); // si a es menor a b, el numero es negativo
     // Overflow con signo: si signos iguales dan signo opuesto
@@ -608,7 +609,7 @@ int opc_mul(uint32_t op1, uint32_t op2)
     if (err)
         return err;
 
-    int64_t a, b, res; // esto para que res pueda tomar valores fuera de los limites de 32 bits, y si sucede, se detecta y se setea el carry de cc
+    int64_t a = d1, b = d2, res; // esto para que res pueda tomar valores fuera de los limites de 32 bits, y si sucede, se detecta y se setea el carry de cc
     res = a * b;
 
     // Flags
@@ -808,6 +809,10 @@ int opc_sys(uint32_t op1)
 
             break;
         case 2:
+            //hecha para testear algo
+            uint32_t dato;
+            leer_memoria(puntero_l, tam_vals, &dato);
+            printf("El resultado es: %d \n", (int8_t)dato);
             break;
         default:
             printf("ERROR SYS recibio un valor que no es 1 ni 2\n");
@@ -889,4 +894,19 @@ int opc_jnz(uint32_t op1) {
         return opc_jmp(op1);
     else 
         return 0; 
+}
+int opc_cmp(uint32_t op1, uint32_t op2){
+    int32_t a, b, res;
+    int err = get_dato_op(op1, &a);
+    if (err) return err;
+    err = get_dato_op(op2, &b);
+    if (err) return err;
+    res = a - b;
+    int n = (res < 0);
+    int z = (res == 0);
+    int c = 0;
+    int v = (a >= 0 && b < 0 && res < 0) || (a < 0 && b >= 0 && res >= 0);
+
+    set_flags(n, z, c, v);
+    return 0; 
 }
