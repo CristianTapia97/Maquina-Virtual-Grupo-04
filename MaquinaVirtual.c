@@ -17,6 +17,7 @@
 #define EDX registros[13]
 #define EEX registros[14]
 #define EFX registros[15]
+#define AC registros[16]
 #define CC registros[17]
 #define CS registros[26]
 #define DS registros[27]
@@ -170,9 +171,9 @@ int main(int argc, char **argv){
         printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
 
     printf("\n Data Segment: \n");
-    int dir_ds;
+    int dir_ds, c_bytes = 16;
     puntero_logico_a_direccion_fisica(DS, &dir_ds);
-    for(int i=dir_ds; i<dir_ds+16; i++)
+    for(int i=dir_ds; i<dir_ds+c_bytes; i++)
         printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
     printf(" ...\n");
     return 0;
@@ -536,13 +537,12 @@ int opc_mov(uint32_t op1, uint32_t op2)
     err = set_dato_op(op1, dato_op2);
     if(err)
         return err;
-
     return 0;
 }
 
 int opc_add(uint32_t op1, uint32_t op2)
 {
-    uint32_t a, b, res;
+    int32_t a, b, res;
     int err = get_dato_op(op1, &a);
     if (err)
         return err;
@@ -554,7 +554,7 @@ int opc_add(uint32_t op1, uint32_t op2)
     res = a + b;
 
     // Flags
-    int n = (uint32_t)res < 0; // resultado negativo
+    int n = res < 0; // resultado negativo
     int z = (res == 0); //resultado igual a cerop
     int c = (res < a); // acarreo en suma sin signo
     // Overflow con signo: si signos iguales dan signo opuesto
@@ -571,7 +571,7 @@ int opc_add(uint32_t op1, uint32_t op2)
 
 int opc_sub(uint32_t op1, uint32_t op2)
 {
-    uint32_t a, b, res;
+    int32_t a, b, res;
     int err = get_dato_op(op1, &a);
     if (err)
         return err;
@@ -600,24 +600,26 @@ int opc_sub(uint32_t op1, uint32_t op2)
 
 int opc_mul(uint32_t op1, uint32_t op2)
 {
-    uint32_t a, b, res;
-    int err = get_dato_op(op1, &a);
+    int32_t d1, d2;
+    int err = get_dato_op(op1, &d1);
     if (err)
         return err;
-    err = get_dato_op(op2, &b);
+    err = get_dato_op(op2, &d2);
     if (err)
         return err;
+
+    int64_t a, b, res; // esto para que res pueda tomar valores fuera de los limites de 32 bits, y si sucede, se detecta y se setea el carry de cc
     res = a * b;
 
     // Flags
-    int n = (uint32_t)res < 0; // resultado negativo
+    int n = res < 0; // resultado negativo
     int z = res == 0; //resultado igual a cerop
     int c = res > 2147483846 || res < -2147483846; // acarreo en la multiplicacion, si hay acarreo tambien hay overflow
     int v = c;
 
     set_flags(n, z, c, v);
 
-    err = set_dato_op(op1, res);
+    err = set_dato_op(op1, (int32_t)res);
     if (err)
         return err;
 
@@ -626,7 +628,7 @@ int opc_mul(uint32_t op1, uint32_t op2)
 
 int opc_div(uint32_t op1, uint32_t op2)
 {
-    uint32_t a, b, res;
+    int32_t a, b, res;
     int err = get_dato_op(op1, &a);
     if (err)
         return err;
@@ -638,13 +640,21 @@ int opc_div(uint32_t op1, uint32_t op2)
         return -1; //no se puede dividir por cero
 
     res = a / b;
+    
+
+    if(a<0 && b>0) // -- proceso para hacer que la vision siempre concluya con resto positivo (medio dificil de entender viendolo directamente, cualquier cosa preguntenme. atte gaspar)
+        res--;
+    else if(a<0 && b<0)
+        res++;
+    AC = a-res*b; // se le asigna a AC el resto de la division
+
 
     // Flags
-    int n = (uint32_t)res < 0; // resultado negativo
+    int n = res < 0; // resultado negativo
 
     // Caso especial de overflow en división con signo: INT32_MIN / -1
     if (a == -2147483648 && b == -1) {
-        uint32_t res = (uint32_t)a;
+        int32_t res = (int32_t)a;
         set_flags(n,0,1,1);
     } else {
         set_flags(n, 0, 0, 0);
@@ -806,212 +816,6 @@ int opc_sys(uint32_t op1)
     return 0;
 }
 
-int opc_add(uint32_t op1, uint32_t op2)
-{
-    uint32_t a, b, res;
-    int err = get_dato_op(op1, &a);
-    if (err)
-        return err;
-
-    err = get_dato_op(op2, &b);
-    if (err)
-        return err;
-
-    res = a + b;
-
-    // Flags
-    int n = (((uint32_t)res < 0)); // resultado negativo
-    int z = (res == 0); //resultado igual a cerop
-    int c = (res < a); // acarreo en suma sin signo
-    // Overflow con signo: si signos iguales dan signo opuesto
-    int v = (((a ^ res) & (b ^ res) & 0x80000000U) != 0);
-
-    set_flags(n, z, c, v);
-
-    err = set_dato_op(op1, res);
-    if(err)
-        return err;
-
-    return 0;
-}
-
-int opc_sub(uint32_t op1, uint32_t op2)
-{
-    uint32_t a, b, res;
-    int err = get_dato_op(op1, &a);
-    if (err)
-        return err;
-
-    err = get_dato_op(op2, &b);
-    if (err)
-        return err;
-
-    res = a - b;
-
-    // Flags
-    int n = (((uint32_t)res < 0)); // resultado negativo
-    int z = (res == 0); //resultado igual a cerop
-    int c = (a < b); // si a es menor a b, el numero es negativo
-    // Overflow con signo: si signos iguales dan signo opuesto
-    int v = (((a ^ b) & (a ^ res) & 0x80000000U) != 0);
-
-    set_flags(n, z, c, v);
-
-    err = set_dato_op(op1, res);
-    if(err)
-        return err;
-
-    return 0;
-}
-
-int opc_xor(uint32_t op1, uint32_t op2)
-{
-    uint32_t a,b,res;
-    int err = get_dato_op(op1, &a);
-    if(err)
-        return err;
-
-    err = get_dato_op(op2,&b);
-    if(err)
-        return err;
-
-    res = a ^ b;
-    set_flags((int32_t)res < 0, res == 0, 0, 0); //carga en CC si es cero o negativo
-    err = set_dato_op(op1, res);
-    if(err)
-        return err;
-
-    return 0;
-}
-
-int opc_ldl(uint32_t op1, uint32_t op2)
-{
-    uint32_t dato_op1;
-    int err = get_dato_op(op1, &dato_op1);
-    if(err)
-        return err;
-
-    uint32_t dato_op2;
-    err = get_dato_op(op2, &dato_op2);
-    if(err)
-        return err;
-
-    dato_op1 &= 0xFFFF0000;
-    dato_op2 &= 0x0000FFFF;
-    dato_op1 |= dato_op2;
-
-    err = set_dato_op(op1, dato_op1);
-    if(err)
-        return err;
-
-    return 0;
-}
-
-int opc_ldh(uint32_t op1, uint32_t op2)
-{
-    uint32_t dato_op1;
-    int err = get_dato_op(op1, &dato_op1);
-    if(err)
-        return err;
-
-    uint32_t dato_op2;
-    err = get_dato_op(op2, &dato_op2);
-    if(err)
-        return err;
-
-
-    dato_op1 &= 0x0000FFFF;
-    dato_op2 &= 0x0000FFFF; // dejo los ultimos 2 bytes
-    dato_op2 <<= 16; //        los muevo a la parte alta
-    dato_op1 |= dato_op2;
-
-
-    err = set_dato_op(op1, dato_op1);
-    if(err)
-        return err;
-
-    return 0;
-}
-
-
-int opc_sys(uint32_t op1)
-{
-    uint32_t dato_op1;
-    int err = get_dato_op(op1, &dato_op1);
-    if(err)
-        return err;
-    dato_op1 &= 0x0000001F; // dejo solo los ultimos 5 bits
-
-
-    uint16_t c_vals = ECX;
-    uint16_t tam_vals = ECX>>16;
-    uint32_t puntero_l = EDX;
-
-    int dir_puntero;
-
-
-
-    switch(dato_op1){
-        case 1:
-            // -- seccion pendiente de cambio, bastane fea y seguro se pueda hacer algo que funcione para el SYS 1 y SYS 2
-            int index_format=0;
-            uint8_t bit_mask = 0x00000001;
-            for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++)
-                bit_mask <<= 1;
-
-            if(index_format>4)
-            {
-                printf("ERROR ejecutando SYS, EAX no tiene un valor valido\n");
-                return -10;
-            }
-            // --
-
-            for(int i=0; i<c_vals; i++)
-            {
-
-                if(puntero_logico_a_direccion_fisica(puntero_l, &dir_puntero)) return -1;
-                printf("[%04X]: ", dir_puntero);
-
-                uint32_t input=0;
-
-                if(index_format!=4) // binario es mas raro
-                {
-
-                    char scanf_format[3] = "% ";
-                    scanf_format[1] = formatos_sys[index_format]; // relleno el espacio en scanf_format con el formato del input
-
-                    scanf(scanf_format, &input);
-
-                }
-                else // formato binario, incomodo
-                {
-                    char b_input[32];
-                    scanf("%s", b_input);
-                    int bits = strlen(b_input);
-                    for(int j=0; j<bits; j++)
-                    {
-                        input <<= 1; // creo un espacio para el sig bit
-                        if(b_input[j]!='0')
-                            input |= 1; // si es 1, lo relleno con 1
-                    }
-                }
-
-                if(escribir_memoria(puntero_l, tam_vals, input))
-                    return -1;
-                puntero_l+=tam_vals;
-            }
-
-
-
-            break;
-        case 2:
-            break;
-        default:
-            printf("ERROR SYS recibio un valor que no es 1 ni 2\n");
-            return -10;
-    }
-    return 0;
-}
 
 
 int opc_not(uint32_t op1){
