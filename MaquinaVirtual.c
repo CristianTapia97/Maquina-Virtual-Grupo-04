@@ -569,7 +569,7 @@ int get_dato_op(uint32_t op, int32_t* dato)
             break;
         case 3: // operando de memoria
             index_reg = op&0x0000001F;
-            uint16_t extra_offset = (op>>8)&0x0000FFFF;
+            int16_t extra_offset = (op>>8)&0x0000FFFF;
 
             uint32_t l_pointer = registros[index_reg]+extra_offset;
             if(leer_memoria(l_pointer, 4, dato, 0))
@@ -595,7 +595,7 @@ int set_dato_op(uint32_t op, int32_t dato)
             return -20; // tipo de operando izquierdo invalido
         case 3: // operando de memoria
             index_reg = op&0x0000001F;
-            uint16_t extra_offset = (op>>8)&0x0000FFFF;
+            int16_t extra_offset = (op>>8)&0x0000FFFF;
 
             uint32_t l_pointer = registros[index_reg]+extra_offset;
             if(escribir_memoria(l_pointer, 4, dato))
