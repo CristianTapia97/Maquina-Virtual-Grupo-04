@@ -114,7 +114,7 @@ operacion_1_param operaciones_1_param[] = {
 
 int puntero_logico_a_direccion_fisica(uint32_t puntero_l, int* dir);
 int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos);
-int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data);
+int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data, int leeInstruccion);
 int escribir_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t data);
 int lectura_programa();
 int iniciar_programa(const char *ruta_archivo);
@@ -320,10 +320,11 @@ int puntero_logico_a_direccion_fisica(uint32_t puntero_l, int* dir)
  * @param puntero_l puntero logico al primer byte a leer
  * @param c_bytes cantidad de bytes a leer, si es 0 data va a valer 0
  * @param data output de la informacion leida
+ * @param leeInstruccion booleano para identificar si lo que se lee es instruccion o datos
  *
  * @return se retorna el codigo de error de la operacion 0 = sin error // importante la distincion entre el codigo de error y la informacion, antes ambos eran el return
  */
-int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data)
+int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data, int leeInstruccion)
 {
     int dir_fisica;
     if(!data)
@@ -339,6 +340,13 @@ int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data)
     {
         *data <<= 8;
         *data += memoria[dir_fisica+i];
+    }
+    //solo carga los registros LAR, MAR y MBR cuando se leen datos, no instrucciones
+    if (!leeInstruccion) {
+        LAR = puntero_l; //direccion logica
+        MAR = ((uint32_t)c_bytes << 16) | ((uint32_t)dir_fisica & 0xFFFF); //cantidad de bytes en los dos bytes mas significativos
+                                                                        //y direccion fisica en los dos bytes menos significativos
+        MBR = *data; //datos
     }
     return 0;
 }
@@ -358,7 +366,12 @@ int escribir_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t data)
     if(!chunk_memoria_valido(puntero_l, c_bytes, &dir_fisica))
         return -1; // error de segmento
 
-
+    //carga los registros LAR, MAR y MBR
+    //siempre se van a cargar los registros cuando se escriba en la memoria y que toda escritura es de datos
+    LAR = puntero_l; //direccion logica
+    MAR = ((uint32_t)c_bytes << 16) | ((uint32_t)dir_fisica & 0xFFFF); //cantidad de bytes en los dos bytes mas significativos
+                                                                        //y direccion fisica en los dos bytes menos significativos
+    MBR = data; //datos
 
     for(int i=0; i<c_bytes; i++)
     {
@@ -367,6 +380,7 @@ int escribir_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t data)
         uint8_t byte = data>>shift_bits;
         memoria[dir_fisica+i] = byte;
     }
+
     return 0;
 }
 
@@ -387,7 +401,7 @@ int lectura_programa(){
     uint32_t tam_instruccion = 1;
 
     uint32_t operacion; // tube que hacerlo 32 en vez de 8 para poder pasarlo como parametro uint32_t* de leer_memoria :/
-    if(leer_memoria(IP, 1, &operacion))
+    if(leer_memoria(IP, 1, &operacion, 1))
         return -1; // error de segmento
 
     OPC  = operacion & 0b00011111;
@@ -398,8 +412,8 @@ int lectura_programa(){
     uint32_t pl_p1 = IP+1+tipo_p2;
 
     if(
-        leer_memoria(pl_p2, tipo_p2, &data_p2) ||
-        leer_memoria(pl_p1, tipo_p1, &data_p1)
+        leer_memoria(pl_p2, tipo_p2, &data_p2, 1) ||
+        leer_memoria(pl_p1, tipo_p1, &data_p1, 1)
     )
         return -1; // error de segmento
 
@@ -481,7 +495,7 @@ int get_dato_op(uint32_t op, int32_t* dato)
             uint16_t extra_offset = (op>>8)&0x0000FFFF;
 
             uint32_t l_pointer = registros[index_reg]+extra_offset;
-            if(leer_memoria(l_pointer, 4, dato))
+            if(leer_memoria(l_pointer, 4, dato, 0))
                 return -1;
             break;
         //default: no hace falta porque tipo se pasa por una mascara de 2 bits, osea que no hay otro valor posible aparte de 0 1 2 3
@@ -778,7 +792,7 @@ int opc_shl(uint32_t op1, uint32_t op2)
         n=0;
         z=0;
     } else
-        if (b<31) {
+        if (b < 32) {
             c = (int)(a >> 32 - b) & 1; //toma el valor del ultimo bit que sale afuera, sino hay carry toma cero
             res = a << b;
             v = (((a ^ res) & 0x80000000) != 0); //hay desbordamiento si el bit 31 difiere de a o si algún bit expulsado era distinto del bit de signo
@@ -792,7 +806,7 @@ int opc_shl(uint32_t op1, uint32_t op2)
                 res = 0;
                 v = (a != 0);
             }
-    }
+
     n = ((int32_t)res < 0);
     z = (res == 0);
     set_flags(n,z,c,v); //carga en CC
@@ -1023,7 +1037,7 @@ int opc_sys(uint32_t op1)
         case 2:
             //hecha para testear algo
             uint32_t dato;
-            leer_memoria(puntero_l, tam_vals, &dato);
+            leer_memoria(puntero_l, tam_vals, &dato, 1);
             printf("El resultado es: %d \n", (int8_t)dato);
             break;
         default:
@@ -1110,13 +1124,15 @@ int opc_jnz(uint32_t op1) {
 int opc_cmp(uint32_t op1, uint32_t op2){
     int32_t a, b, res;
     int err = get_dato_op(op1, &a);
-    if (err) return err;
+    if (err)
+        return err;
     err = get_dato_op(op2, &b);
-    if (err) return err;
+    if (err)
+        return err;
     res = a - b;
     int n = (res < 0);
     int z = (res == 0);
-    int c = 0;
+    int c = (a < b); //al calcularse como SUB, si la resta da un resultado negativo afecta al carry
     int v = (a >= 0 && b < 0 && res < 0) || (a < 0 && b >= 0 && res >= 0);
 
     set_flags(n, z, c, v);
