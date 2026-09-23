@@ -191,7 +191,7 @@ int str_termina_con(char* str, char* sufijo);
 void op_a_str(uint32_t op, char* str);
 
 int main(int argc, char **argv){
-    char nombre_archivo[] = "ej8.vmx";
+    char nombre_archivo[] = "asmtest.vmx";
     int flag_on = 0;
 
     /* input del archivo por consola, funciona bien pero lo dejo comentado para testear mas comodo
@@ -415,7 +415,7 @@ int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data, int leeIns
     if (!leeInstruccion) {
         LAR = puntero_l; //direccion logica
         MAR = ((uint32_t)c_bytes << 16) | ((uint32_t)dir_fisica & 0xFFFF); //cantidad de bytes en los dos bytes mas significativos
-        //y direccion fisica en los dos bytes menos significativos
+                                                                        //y direccion fisica en los dos bytes menos significativos
         MBR = *data; //datos
     }
     return 0;
@@ -534,10 +534,10 @@ int lectura_programa(){
     op_a_str(OP2, op2_str);
 
 
-    /*printf("\noperacion: %02X\n", operacion); // out de debug para tantear los valores leidos
+    printf("\noperacion: %02X\n", operacion); // out de debug para tantear los valores leidos
     printf("tipo op:   %s (%02X)\n", mnemonicos[OPC], OPC);
     printf("op1:       %s (%06X)\n", op1_str, OP1);
-    printf("op2:       %s (%06X)\n", op2_str, OP2);*/
+    printf("op2:       %s (%06X)\n", op2_str, OP2);
     printf("instruccion disassembler: %4s %s %s\n", mnemonicos[OPC], op1_str, op2_str);
     printf("err code:  %d\n\n", err);
 
@@ -845,6 +845,8 @@ int opc_swap(uint32_t op1, uint32_t op2)
         res = a ^ b;
         set_flags((int32_t)res < 0, res == 0, 0, 0); //carga en CC si es cero o negativo
         err = set_dato_op(op1, res);
+        if(err)
+            return err;
         err = set_dato_op(op2, b);
         if(err)
             return err;
