@@ -58,7 +58,10 @@ int opc_add(uint32_t, uint32_t); //afecta el registro CC
 int opc_sub(uint32_t, uint32_t); //afecta el registro CC
 int opc_mul(uint32_t, uint32_t); //afecta el registro CC
 int opc_div(uint32_t, uint32_t); //afecta el registro CC
+int opc_and(uint32_t, uint32_t); //afecta el registro CC
+int opc_or(uint32_t, uint32_t); //afecta el registro CC
 int opc_xor(uint32_t, uint32_t); //afecta el registro CC
+int opc_swap(uint32_t, uint32_t); //afecta el registro CC
 int opc_ldl(uint32_t, uint32_t);
 int opc_ldh(uint32_t, uint32_t);
 int opc_cmp(uint32_t, uint32_t);
@@ -77,10 +80,10 @@ operacion_2_params operaciones_2_params[] = {
     opc_mul,//MUL
     opc_div,//DIV
     opc_cmp,//CMPs
-    opc_2placeholder,//AND
-    opc_2placeholder,//OR
+    opc_and,//AND
+    opc_or,//OR
     opc_xor,//XOR
-    opc_2placeholder,//SWAP
+    opc_swap,//SWAP
     opc_2placeholder,//SHL
     opc_2placeholder,//SHR
     opc_2placeholder,//SAR
@@ -159,7 +162,7 @@ int main(int argc, char **argv){
         }
     }
 
-    
+
     printf("\n Registros:\n");
     for(int i=0; i<32; i++)
         printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]);
@@ -641,7 +644,7 @@ int opc_div(uint32_t op1, uint32_t op2)
         return -1; //no se puede dividir por cero
 
     res = a / b;
-    
+
 
     if(a<0 && b>0) // -- proceso para hacer que la vision siempre concluya con resto positivo (medio dificil de entender viendolo directamente, cualquier cosa preguntenme. atte gaspar)
         res--;
@@ -668,6 +671,46 @@ int opc_div(uint32_t op1, uint32_t op2)
     return 0;
 }
 
+int opc_and(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err = get_dato_op(op1, &a);
+    if(err)
+        return err;
+
+    err = get_dato_op(op2,&b);
+    if(err)
+        return err;
+
+    res = a & b;
+    set_flags((int32_t)res < 0, res == 0, 0, 0); //carga en CC si es cero o negativo
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_or(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err = get_dato_op(op1, &a);
+    if(err)
+        return err;
+
+    err = get_dato_op(op2,&b);
+    if(err)
+        return err;
+
+    res = a | b;
+    set_flags((int32_t)res < 0, res == 0, 0, 0); //carga en CC si es cero o negativo
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
 int opc_xor(uint32_t op1, uint32_t op2)
 {
     uint32_t a,b,res;
@@ -685,6 +728,31 @@ int opc_xor(uint32_t op1, uint32_t op2)
     if(err)
         return err;
 
+    return 0;
+}
+
+int opc_swap(uint32_t op1, uint32_t op2)
+{
+    uint32_t a,b,res;
+    uint8_t tipo1 = (op1>>24)&0x3;
+    uint8_t tipo2 = (op2>>24)&0x3;
+    if (tipo1==1 || tipo1==3 && tipo2==1 || tipo2==3) { //solo se puede aplicar la operacion en registros y/o celdas
+        int err = get_dato_op(op1, &a);
+        if(err)
+            return err;
+
+        err = get_dato_op(op2,&b);
+        if(err)
+            return err;
+
+        a = a ^ b;
+        b = b ^ a;
+        res = a ^ b;
+        set_flags((int32_t)res < 0, res == 0, 0, 0); //carga en CC si es cero o negativo
+        err = set_dato_op(op1, res);
+        if(err)
+            return err;
+    }
     return 0;
 }
 
@@ -841,7 +909,7 @@ int opc_jmp(uint32_t op1)
 {
     int32_t destino;
     int err = get_dato_op(op1, &destino);
-    if (err) 
+    if (err)
         return err;
 
     IP = CS | ((uint32_t)destino & 0xFFFF); //por si en el futuro CS no esta en el segmento 0
@@ -850,50 +918,50 @@ int opc_jmp(uint32_t op1)
 int opc_jp(uint32_t op1)  { // Positivo estricto
     if( (CC & FLAG_N) == 0 && (CC & FLAG_Z) == 0)
         return opc_jmp(op1);
-    else 
+    else
         return 0;
 }
 int opc_jn(uint32_t op1){ // Negativo
     if( (CC & FLAG_N) != 0)
         return opc_jmp(op1);
-    else 
-        return 0; 
-}            
+    else
+        return 0;
+}
 int opc_jz(uint32_t op1)  { //Cero
     if( (CC & FLAG_Z) != 0)
         return opc_jmp(op1);
-    else 
-        return 0; 
-} 
+    else
+        return 0;
+}
 int opc_jc(uint32_t op1)  { //Carry
     if( (CC & FLAG_C) != 0)
         return opc_jmp(op1);
-    else 
-        return 0; 
+    else
+        return 0;
 } // Carry
 int opc_jv(uint32_t op1)  { //Overflow
     if( (CC & FLAG_V) != 0)
         return opc_jmp(op1);
-    else 
+    else
         return 0;
 }
 int opc_jnp(uint32_t op1) { // No positivo (<= 0)
     if( (CC & FLAG_N) != 0 || (CC & FLAG_Z) != 0)
         return opc_jmp(op1);
-    else 
-        return 0; 
-} 
+    else
+        return 0;
+}
 int opc_jnn(uint32_t op1) { // No negativo (>= 0)
     if( (CC & FLAG_N) == 0)
         return opc_jmp(op1);
-    else 
-        return 0; 
-}            
-int opc_jnz(uint32_t op1) { 
+    else
+        return 0;
+}
+int opc_jnz(uint32_t op1) {
     if( (CC & FLAG_Z) == 0)
         return opc_jmp(op1);
-    else 
-        return 0; 
+    else
+        return 0;
 }
 int opc_cmp(uint32_t op1, uint32_t op2){
     int32_t a, b, res;
@@ -908,5 +976,5 @@ int opc_cmp(uint32_t op1, uint32_t op2){
     int v = (a >= 0 && b < 0 && res < 0) || (a < 0 && b >= 0 && res >= 0);
 
     set_flags(n, z, c, v);
-    return 0; 
+    return 0;
 }
