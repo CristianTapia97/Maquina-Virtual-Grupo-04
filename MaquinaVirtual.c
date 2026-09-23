@@ -847,6 +847,9 @@ int opc_swap(uint32_t op1, uint32_t op2)
         err = set_dato_op(op1, res);
         if(err)
             return err;
+        err = set_dato_op(op2, b);
+        if(err)
+            return err;
     }
     return 0;
 }
@@ -1053,29 +1056,24 @@ int opc_sys(uint32_t op1)
     uint16_t c_vals = ECX;
     uint16_t tam_vals = ECX>>16;
     uint32_t puntero_l = EDX;
-
     int dir_puntero;
 
+    int index_format=0;
+    uint8_t bit_mask = 0x00000001;
+    for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++)
+        bit_mask <<= 1;
 
-
+    if(index_format>4){
+        printf("ERROR ejecutando SYS, EAX no tiene un valor valido\n");
+        return -10;
+    }
     switch(dato_op1){
         case 1:
             // -- seccion pendiente de cambio, bastane fea y seguro se pueda hacer algo que funcione para el SYS 1 y SYS 2
-            int index_format=0;
-            uint8_t bit_mask = 0x00000001;
-            for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++)
-                bit_mask <<= 1;
-
-            if(index_format>4)
-            {
-                printf("ERROR ejecutando SYS, EAX no tiene un valor valido\n");
-                return -10;
-            }
             // --
 
             for(int i=0; i<c_vals; i++)
             {
-
                 if(puntero_logico_a_direccion_fisica(puntero_l, &dir_puntero)) return -1;
                 printf("[%04X]: ", dir_puntero);
 
@@ -1084,16 +1082,18 @@ int opc_sys(uint32_t op1)
                 if(index_format!=4) // binario es mas raro
                 {
 
-                    char scanf_format[3] = "% ";
+                    char scanf_format[3] = "%";
                     scanf_format[1] = formatos_sys[index_format]; // relleno el espacio en scanf_format con el formato del input
-
-                    scanf(scanf_format, &input);
-
+                    if (index_format == 1) { // Caracter individual
+                        scanf(" %c", (char*)&input);
+                    } else {
+                        scanf(scanf_format, &input);
+                    }
                 }
                 else // formato binario, incomodo
                 {
-                    char b_input[32];
-                    scanf("%s", b_input);
+                    char b_input[33];
+                    scanf("%32s", b_input);
                     int bits = strlen(b_input);
                     for(int j=0; j<bits; j++)
                     {
@@ -1107,15 +1107,61 @@ int opc_sys(uint32_t op1)
                     return -1;
                 puntero_l+=tam_vals;
             }
-
-
-
             break;
         case 2:
-            //hecha para testear algo
-            uint32_t dato;
-            leer_memoria(puntero_l, tam_vals, &dato, 1);
-            printf("El resultado es: %d \n", (int8_t)dato);
+            // MODO REGISTRO DIRECTO: si tam_vals o c_vals es 0, imprime directamente EDX
+            if(tam_vals == 0 || c_vals == 0) {
+                if(index_format != 4) {
+                    char printf_format[4] = "%";
+                    printf_format[1] = formatos_sys[index_format];
+                    if (index_format == 0) {
+                        printf(printf_format, (int32_t)EDX);
+                    } else {
+                        printf(printf_format, EDX);
+                    }
+                } else { // binario
+                    for(int b = 31; b >= 0; b--)
+                        printf("%d", (EDX >> b) & 1);
+                }
+                if(index_format != 1) printf("\n");
+                break;
+            }
+            // MODO MEMORIA: lee c_vals elementos desde puntero_l
+            char printf_format[4] = "%";
+            if(index_format != 4)
+                printf_format[1] = formatos_sys[index_format];
+
+            for(int i = 0; i < c_vals; i++)
+            {
+                uint32_t dato = 0;
+                if(leer_memoria(puntero_l, tam_vals, &dato, 0))
+                    return -1;
+
+                if(index_format != 4)
+                {
+                    // Extensión de signo si es decimal y menor a 4 bytes
+                    if(index_format == 0) {
+                        if(tam_vals == 1) dato = (uint32_t)(int32_t)(int8_t)dato;
+                        else if(tam_vals == 2) dato = (uint32_t)(int32_t)(int16_t)dato;
+                        printf(printf_format, (int32_t)dato);
+                    } else {
+                        printf(printf_format, dato);
+                    }
+                }
+                else // binario a mano para memoria
+                {
+                    int total_bits = (tam_vals <= 4) ? (tam_vals * 8) : 32;
+                    for(int b = total_bits - 1; b >= 0; b--)
+                        printf("%d", (dato >> b) & 1);
+                }
+
+                // Espacio entre elementos si no es texto plano (%c)
+                if(index_format != 1 && i + 1 < c_vals)
+                    printf(" ");
+
+                puntero_l += tam_vals;
+            }
+            if(index_format != 1) printf("\n");
             break;
         default:
             printf("ERROR SYS recibio un valor que no es 1 ni 2\n");
