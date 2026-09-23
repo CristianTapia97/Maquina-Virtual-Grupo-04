@@ -62,9 +62,13 @@ int opc_and(uint32_t, uint32_t); //afecta el registro CC
 int opc_or(uint32_t, uint32_t); //afecta el registro CC
 int opc_xor(uint32_t, uint32_t); //afecta el registro CC
 int opc_swap(uint32_t, uint32_t); //afecta el registro CC
+int opc_shl(uint32_t, uint32_t); //afecta el registro CC
+int opc_shr(uint32_t, uint32_t); //afecta el registro CC
+int opc_sar(uint32_t, uint32_t); //afecta el registro CC
+int opc_rnd(uint32_t, uint32_t); //afecta el registro CC
 int opc_ldl(uint32_t, uint32_t);
 int opc_ldh(uint32_t, uint32_t);
-int opc_cmp(uint32_t, uint32_t);
+int opc_cmp(uint32_t, uint32_t); //afecta el registro CC
 int opc_2placeholder(uint32_t op1, uint32_t op2){ printf("operacion no implementada. OPC: %02X OP1: %08X OP2: %08X\n", OPC, op1, op2); return 0;}
 
 
@@ -75,7 +79,7 @@ typedef int(*operacion_1_param)(uint32_t);
 // Arrays de funciones de 1 y 2 parametros
 operacion_2_params operaciones_2_params[] = {
     opc_mov,//MOV
-    opc_add,//ADD   placeholders por si queremos ir desarrollandolas en cualquier orden
+    opc_add,//ADD   chau placeholders
     opc_sub,//SUB
     opc_mul,//MUL
     opc_div,//DIV
@@ -84,12 +88,12 @@ operacion_2_params operaciones_2_params[] = {
     opc_or,//OR
     opc_xor,//XOR
     opc_swap,//SWAP
-    opc_2placeholder,//SHL
-    opc_2placeholder,//SHR
-    opc_2placeholder,//SAR
+    opc_shl,//SHL
+    opc_shr,//SHR
+    opc_sar,//SAR
     opc_ldl,//LDL
     opc_ldh,//LDH
-    opc_2placeholder //RND
+    opc_rnd //RND
 };
 operacion_1_param operaciones_1_param[] = {
     opc_sys,//SYS
@@ -559,7 +563,7 @@ int opc_add(uint32_t op1, uint32_t op2)
 
     // Flags
     int n = res < 0; // resultado negativo
-    int z = (res == 0); //resultado igual a cerop
+    int z = (res == 0); //resultado igual a cero
     int c = (res < a); // acarreo en suma sin signo
     // Overflow con signo: si signos iguales dan signo opuesto
     int v = (((a ^ res) & (b ^ res) & 0x80000000U) != 0);
@@ -736,7 +740,7 @@ int opc_swap(uint32_t op1, uint32_t op2)
     uint32_t a,b,res;
     uint8_t tipo1 = (op1>>24)&0x3;
     uint8_t tipo2 = (op2>>24)&0x3;
-    if (tipo1==1 || tipo1==3 && tipo2==1 || tipo2==3) { //solo se puede aplicar la operacion en registros y/o celdas
+    if ((tipo1==1 || tipo1==3) && (tipo2==1 || tipo2==3)) { //solo se puede aplicar la operacion en registros y/o celdas
         int err = get_dato_op(op1, &a);
         if(err)
             return err;
@@ -753,6 +757,146 @@ int opc_swap(uint32_t op1, uint32_t op2)
         if(err)
             return err;
     }
+    return 0;
+}
+
+int opc_shl(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err, n, z, c, v;
+    err = get_dato_op(op1, &a);
+    if(err)
+        return err;
+    err = get_dato_op(op2,&b);
+    if(err)
+        return err;
+
+    c=0;
+    v=0;
+    if (b == 0) {
+        res = a;
+        n=0;
+        z=0;
+    } else
+        if (b<31) {
+            c = (int)(a >> 32 - b) & 1; //toma el valor del ultimo bit que sale afuera, sino hay carry toma cero
+            res = a << b;
+            v = (((a ^ res) & 0x80000000) != 0); //hay desbordamiento si el bit 31 difiere de a o si algún bit expulsado era distinto del bit de signo
+        } else
+            if (b == 32) { //caso especifico para cuando a es 1 o 0
+                c = (int)(a & 1U);
+                res = 0;
+                v = (a != 0);
+            } else {
+                c = 0;
+                res = 0;
+                v = (a != 0);
+            }
+    }
+    n = ((int32_t)res < 0);
+    z = (res == 0);
+    set_flags(n,z,c,v); //carga en CC
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_shr(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int err, n, z, c, v;
+    err = get_dato_op(op1, &a);
+    if(err)
+        return err;
+    err = get_dato_op(op2,&b);
+    if(err)
+        return err;
+    //aun tengo algunas dudas del bit de acarreo pero por lo que vi en este tipo de casos se puede activar
+    c=0;
+    v=0; //imposible que sea distinto de cero
+    if (b == 0) {
+        res = a;
+    } else
+        if (b < 32) {
+            // El último bit expulsado por la derecha estaba en la posición (b - 1)
+            c = (int)((a >> (b - 1)) & 1);
+            res = a >> b;
+        } else
+            if (b == 32) {
+                c = (int)((a >> 31) & 1U);
+                res = 0;
+            } else {
+                res = 0;
+            }
+    n = ((int32_t)res < 0);
+    z = (res == 0);
+    set_flags(n,z,c,v); //carga en CC
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_sar(uint32_t op1, uint32_t op2)
+{
+    uint32_t a, b, res;
+    int32_t castA,castRes;
+    int err, n, z, c, v;
+    err = get_dato_op(op1, &a);
+    if(err)
+        return err;
+    err = get_dato_op(op2,&b);
+    if(err)
+        return err;
+    castA = (int32_t)a; //cast para enteros con signo
+    c=0;
+    v=0; //imposible que sea distinto de cero
+    if (b == 0) {
+        castRes=castA;
+    } else
+        if (b < 32) {
+            c = (int)((a >> (b - 1)) & 1U);
+            castRes = castA >> b;
+        } else {
+            c = castA < 0; //si es negativo va a haber carry por que se llena todo de unos
+            castRes = (castA<0) ? -1 : 0;
+        }
+    res=(uint32_t)castRes;
+    n = castRes < 0;
+    z = res == 0;
+    set_flags(n,z,c,v); //carga en CC
+    err = set_dato_op(op1, res);
+    if(err)
+        return err;
+
+    return 0;
+}
+
+int opc_rnd(uint32_t op1, uint32_t op2)
+{
+    uint32_t tope;
+    int err = get_dato_op(op2, &tope);
+    if (err)
+        return err;
+
+    int32_t limite = (int32_t)tope; //cast para que pueda ser negativo tambien
+    uint32_t aleatorio = 0;
+
+    if (limite > 0) {
+        aleatorio = (uint32_t)(rand() % (limite + 1));
+    } else if (limite < 0) {
+        // Por si op2 fuera negativo: genera entre [limite, 0]
+        aleatorio = (uint32_t)(-(rand() % (-limite + 1)));
+    } else {
+        aleatorio = 0;
+    }
+
+    err = set_dato_op(op1, aleatorio);
+    if(err)
+        return err;
     return 0;
 }
 
