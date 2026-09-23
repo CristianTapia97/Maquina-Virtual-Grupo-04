@@ -1080,7 +1080,7 @@ int opc_sys(uint32_t op1)
                 if(index_format!=4) // binario es mas raro
                 {
 
-                    char scanf_format[3] = "% ";
+                    char scanf_format[3] = "%";
                     scanf_format[1] = formatos_sys[index_format]; // relleno el espacio en scanf_format con el formato del input
                     if (index_format == 1) { // Caracter individual
                         scanf(" %c", (char*)&input);
@@ -1125,7 +1125,7 @@ int opc_sys(uint32_t op1)
                 break;
             }
             // MODO MEMORIA: lee c_vals elementos desde puntero_l
-            char printf_format[4] = "% \0";
+            char printf_format[4] = "%";
             if(index_format != 4)
                 printf_format[1] = formatos_sys[index_format];
 
