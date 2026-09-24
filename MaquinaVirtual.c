@@ -1336,6 +1336,7 @@ void op_a_str(uint32_t op, char* str)
 
 int disassembler()
 {
+    int err;
     uint32_t ip = CS;
     uint32_t opc;
     uint32_t op1;
@@ -1348,6 +1349,8 @@ int disassembler()
     uint32_t data_p2 = 0;
     uint32_t tam_instruccion = 1;
     uint32_t operacion;
+    uint32_t dir_op;
+    uint8_t byte;
 
     while(chunk_memoria_valido(ip, 1, NULL))
     {
@@ -1384,9 +1387,36 @@ int disassembler()
         op1 += data_p1;
         op2 = tipo_p2<<24;
         op2 += data_p2;
+        
+        
+        if(err = puntero_logico_a_direccion_fisica(ip, &dir_op))
+            return err;
+        
         ip += tam_instruccion;// desplazo IP a la siguiente instruccion
         op_a_str(op1, op1_str);
         op_a_str(op2, op2_str);
+
+        printf("[%04X] %02X",dir_op, operacion);
+
+        for(int i=tipo_p2-1; i>=0; i--)
+        {
+            byte = data_p2>>(i*8);
+            printf(" %02X", byte);
+        }
+
+
+        for(int i=tipo_p1-1; i>=0; i--)
+        {
+            byte = data_p1>>(i*8);
+            printf(" %02X", byte);
+        }
+
+        int c_espacios = (6-tipo_p1-tipo_p2)*3;
+        for(int i=0; i<c_espacios; i++)
+            printf(" ");
+
+        
+        printf("| ");
 
         printf("%-4s ", mnemonicos[opc]);
         if(tipo_p1)
