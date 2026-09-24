@@ -196,6 +196,8 @@ int str_termina_con(char* str, char* sufijo);
 void op_a_str(uint32_t op, char* str);
 int disassembler();
 void limpiar_input_buffer();
+void proceso_suma(int32_t a, int32_t b, int32_t* r);
+
 
 int main(int argc, char **argv){
     char* nombre_archivo;
@@ -248,7 +250,7 @@ int main(int argc, char **argv){
 
 
 
-    /**/
+    /*
     printf("\n\n Registros:\n");
     for(int i=0; i<32; i++)
         printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]);
@@ -266,6 +268,7 @@ int main(int argc, char **argv){
     for(int i=dir_ds; i<dir_ds+c_bytes; i++)
         printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
     printf(" ...\n");
+    */
     return 0;
 }
 
@@ -548,14 +551,14 @@ int lectura_programa(){
     op_a_str(OP1, op1_str);
     op_a_str(OP2, op2_str);
 
-
+    /*
     printf("\noperacion: %02X\n", operacion); // out de debug para tantear los valores leidos
     printf("tipo op:   %s (%02X)\n", mnemonicos[OPC], OPC);
     printf("op1:       %s (%06X)\n", op1_str, OP1);
     printf("op2:       %s (%06X)\n", op2_str, OP2);
     printf("instruccion disassembler: %4s %s %s\n", mnemonicos[OPC], op1_str, op2_str);
     printf("err code:  %d\n\n", err);
-
+*/
     return err;
 }
 
@@ -655,7 +658,7 @@ int opc_mov(uint32_t op1, uint32_t op2)
 }
 
 int opc_add(uint32_t op1, uint32_t op2)
-{
+{    
     int32_t a, b, res;
     int err = get_dato_op(op1, &a);
     if (err)
@@ -665,16 +668,8 @@ int opc_add(uint32_t op1, uint32_t op2)
     if (err)
         return err;
 
-    res = a + b;
+    proceso_suma(a, b, &res);
 
-    // Flags
-    int n = res < 0; // resultado negativo
-    int z = (res == 0); //resultado igual a cero
-    int c = (res < a); // acarreo en suma sin signo
-    // Overflow con signo: si signos iguales dan signo opuesto
-    int v = (((a ^ res) & (b ^ res) & 0x80000000U) != 0);
-
-    set_flags(n, z, c, v);
 
     err = set_dato_op(op1, res);
     if (err)
@@ -694,16 +689,7 @@ int opc_sub(uint32_t op1, uint32_t op2)
     if (err)
         return err;
 
-    res = a - b;
-
-    // Flags
-    int n = res < 0; // resultado negativo
-    int z = (res == 0); //resultado igual a cerop
-    int c = (a < b); // si a es menor a b, el numero es negativo
-    // Overflow con signo: si signos iguales dan signo opuesto
-    int v = (((a ^ b) & (a ^ res) & 0x80000000U) != 0);
-
-    set_flags(n, z, c, v);
+    proceso_suma(a, -b, &res);
 
     err = set_dato_op(op1, res);
     if(err)
@@ -1162,6 +1148,7 @@ int opc_sys(uint32_t op1)
                                 printf_format[1] = formatos_sys[index_format];
                             // Extensión de signo si es decimal y menor a 4 bytes
                             if(index_format == 0) {
+                                dato_int = dato;
                                 // dato_int en vez de dato porque modifica el dato para los siguientes formatos
                                 if(tam_vals == 1) dato_int = (uint32_t)(int32_t)(int8_t)dato; 
                                 else if(tam_vals == 2) dato_int = (uint32_t)(int32_t)(int16_t)dato;
@@ -1271,20 +1258,39 @@ int opc_jnz(uint32_t op1) {
 }
 int opc_cmp(uint32_t op1, uint32_t op2){
     int32_t a, b, res;
+
     int err = get_dato_op(op1, &a);
     if (err)
         return err;
     err = get_dato_op(op2, &b);
     if (err)
         return err;
-    res = a - b;
-    int n = (res < 0);
-    int z = (res == 0);
-    int c = (a < b); //al calcularse como SUB, si la resta da un resultado negativo afecta al carry
-    int v = (a >= 0 && b < 0 && res < 0) || (a < 0 && b >= 0 && res >= 0);
-
-    set_flags(n, z, c, v);
+    
+    proceso_suma(a, -b, &res);
+    
     return 0;
+}
+
+void proceso_suma(int32_t a, int32_t b, int32_t* r)
+{
+    uint64_t ua = a;
+    uint64_t ub = b;
+    int64_t sa = a;
+    int64_t sb = b;
+
+    ua &= 0x00000000FFFFFFFF;
+    ub &= 0x00000000FFFFFFFF;
+
+    uint64_t ur = ua + ub;
+    int64_t sr = sa + sb;
+    *r = a + b;
+
+    uint8_t v = *r != (int32_t)ur;
+    uint8_t c = ur > 0xFFFFFFFF;
+    uint8_t z = *r==0;
+    uint8_t n = *r<0;
+
+    set_flags(n,z,c,v);
 }
 
 /**
