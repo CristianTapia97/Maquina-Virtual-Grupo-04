@@ -127,7 +127,7 @@ char mnemonicos[0x20][5] = {
     "JNZ",
     "NOT",
     "ER-B",
-    "ER-C", 
+    "ER-C",
     "ER-D", // hay 4 op invalidos pero simplifica mucho tenerlo asi
     "ER-E",
     "STOP",
@@ -188,7 +188,7 @@ char registros_nombres[32][4] = {
 
 int puntero_logico_a_direccion_fisica(uint32_t puntero_l, int* dir);
 int chunk_memoria_valido(uint32_t puntero_l, uint8_t bytes, int* out_pos);
-int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data);
+int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data, int leeInstruccion);
 int escribir_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t data);
 int lectura_programa();
 int iniciar_programa(const char *ruta_archivo);
@@ -222,9 +222,9 @@ int main(int argc, char **argv){
     {
         flag_on = 1;
     }
-    
+
     nombre_archivo = argv[1]; // asigno a nombre_archivo el puntero al argumento 1 (path al .asm)
-    
+
     if(err = iniciar_programa(nombre_archivo))
         printf("ERROR LECTURA: codigo de error: %d\n", err);// deberiamos tener alguna forma de mostrar en texto lo que paso
 
@@ -234,7 +234,15 @@ int main(int argc, char **argv){
     while (!err) { // si IP sale del segmento, sucede un error de segmento y retorna error -1
         err=lectura_programa();
     }
-    printf("Deteniendo lectura por error o STOP. errcode:%d\n\n\n", err);
+    switch (err) {
+        case ERR_FS: printf("Fallo de segmento\n");
+                     break;
+        case ERR_DC: printf("Division por cero\n");
+                     break;
+        case ERR_II: printf("Instruccion invalida\n");
+                     break;
+        default: printf("Lectura detenida\n");
+    }
 
 
     if(flag_on)
@@ -406,7 +414,7 @@ int puntero_logico_a_direccion_fisica(uint32_t puntero_l, int* dir)
  *
  * @return se retorna el codigo de error de la operacion 0 = sin error // importante la distincion entre el codigo de error y la informacion, antes ambos eran el return
  */
-int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data)
+int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data, int leeInstruccion)
 {
     int dir_fisica;
     if(!data)
@@ -423,11 +431,12 @@ int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data)
         *data <<= 8;
         *data += memoria[dir_fisica+i];
     }
-    //siempre que se accede a la memoria se tienen que setear estos valoresz
-    LAR = puntero_l; //direccion logica
-    MAR = ((uint32_t)c_bytes << 16) | ((uint32_t)dir_fisica & 0xFFFF); //cantidad de bytes en los dos bytes mas significativos
+    if (!leeInstruccion) {
+        LAR = puntero_l; //direccion logica
+        MAR = ((uint32_t)c_bytes << 16) | ((uint32_t)dir_fisica & 0xFFFF); //cantidad de bytes en los dos bytes mas significativos
                                                                     //y direccion fisica en los dos bytes menos significativos
-    MBR = *data; //datos
+        MBR = *data; //datos
+    }
     return 0;
 }
 
@@ -486,7 +495,7 @@ int lectura_programa(){
     uint32_t tam_instruccion = 1;
 
     uint32_t operacion; // tube que hacerlo 32 en vez de 8 para poder pasarlo como parametro uint32_t* de leer_memoria :/
-    if(leer_memoria(IP, 1, &operacion))
+    if(leer_memoria(IP, 1, &operacion, 1))
         return ERR_FS; // error de segmento
 
     OPC  = operacion & 0b00011111;
@@ -497,8 +506,8 @@ int lectura_programa(){
     uint32_t pl_p1 = IP+1+tipo_p2;
 
     if(
-        leer_memoria(pl_p2, tipo_p2, &data_p2) ||
-        leer_memoria(pl_p1, tipo_p1, &data_p1)
+        leer_memoria(pl_p2, tipo_p2, &data_p2, 1) ||
+        leer_memoria(pl_p1, tipo_p1, &data_p1, 1)
     )
         return ERR_FS; // error de segmento
 
@@ -587,7 +596,7 @@ int get_dato_op(uint32_t op, int32_t* dato)
             int16_t extra_offset = (op>>8)&0x0000FFFF;
 
             uint32_t l_pointer = registros[index_reg]+extra_offset;
-            if(leer_memoria(l_pointer, 4, dato))
+            if(leer_memoria(l_pointer, 4, dato, 0))
                 return ERR_FS;
             break;
         //default: no hace falta porque tipo se pasa por una mascara de 2 bits, osea que no hay otro valor posible aparte de 0 1 2 3
@@ -751,7 +760,7 @@ int opc_div(uint32_t op1, uint32_t op2)
         return err;
 
     if (b==0)
-        return ERR_FS; //no se puede dividir por cero
+        return ERR_DC; //no se puede dividir por cero
 
     res = a / b;
 
@@ -1062,6 +1071,7 @@ int opc_ldh(uint32_t op1, uint32_t op2)
 int opc_sys(uint32_t op1)
 {
     uint32_t dato_op1;
+    int index_format;
     int err = get_dato_op(op1, &dato_op1);
     if(err)
         return err;
@@ -1072,13 +1082,12 @@ int opc_sys(uint32_t op1)
     uint32_t puntero_l = EDX;
     int dir_puntero;
 
-    
+
     uint8_t bit_mask = 0x00000001;
 
-    
+
     switch(dato_op1){
         case 1:
-            int index_format=0;
             for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++) // mecanismo para conseguir el primer formato, y solo se usara ese
                 bit_mask <<= 1;
             if(index_format>4){
@@ -1145,7 +1154,7 @@ int opc_sys(uint32_t op1)
                 printf("[%04X]: ", dir_puntero);
 
                 uint32_t dato = 0, dato_int;
-                if(leer_memoria(puntero_l, tam_vals, &dato))
+                if(leer_memoria(puntero_l, tam_vals, &dato, 0))
                     return ERR_FS;
 
                 //for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++) // mecanismo para conseguir el primer formato, y solo se usara ese
@@ -1163,10 +1172,10 @@ int opc_sys(uint32_t op1)
                             // Extensión de signo si es decimal y menor a 4 bytes
                             if(index_format == 0) {
                                 // dato_int en vez de dato porque modifica el dato para los siguientes formatos
-                                if(tam_vals == 1) dato_int = (uint32_t)(int32_t)(int8_t)dato; 
+                                if(tam_vals == 1) dato_int = (uint32_t)(int32_t)(int8_t)dato;
                                 else if(tam_vals == 2) dato_int = (uint32_t)(int32_t)(int16_t)dato;
                                 else if(tam_vals == 3) dato_int = (dato&0x00800000)?dato|0xFF000000:dato; // si el tam es de 3, me fijo si el ultimo bit de los 3 bytes es 1, si lo es, relleno con unos
-                                printf(printf_format, (int32_t)dato_int); 
+                                printf(printf_format, (int32_t)dato_int);
                             } else {
                                 printf(printf_format, dato);
                             }
@@ -1180,8 +1189,8 @@ int opc_sys(uint32_t op1)
                     }
                     bit_mask<<=1;
                 }
-                
-                
+
+
 
                 printf("\n");
 
@@ -1289,10 +1298,10 @@ int opc_cmp(uint32_t op1, uint32_t op2){
 
 /**
  * genera el string representativo del operando en assembler
- * 
+ *
  * @param op operando, como esta en OP1 y OP2
  * @param str puntero a un bloque de memoria de bits suficientes, con 15 bytes es suficiente
- * 
+ *
  */
 void op_a_str(uint32_t op, char* str)
 {
@@ -1347,7 +1356,7 @@ int disassembler()
     {
         tam_instruccion = 1;
 
-        if(leer_memoria(ip, 1, &operacion))
+        if(leer_memoria(ip, 1, &operacion, 1))
             return ERR_FS; // error de segmento
 
         opc  = operacion & 0b00011111;
@@ -1358,8 +1367,8 @@ int disassembler()
         uint32_t pl_p1 = ip+1+tipo_p2;
 
         if(
-            leer_memoria(pl_p2, tipo_p2, &data_p2) ||
-            leer_memoria(pl_p1, tipo_p1, &data_p1)
+            leer_memoria(pl_p2, tipo_p2, &data_p2, 1) ||
+            leer_memoria(pl_p1, tipo_p1, &data_p1, 1)
         )
             return ERR_FS; // error de segmento
 
