@@ -27,6 +27,7 @@
 #define FLAG_V (1U << 28)
 
 
+#define ERR_FP 1  //"error" fin de programa
 #define ERR_FS -1 // error fallo de segmento
 #define ERR_II -2 // error instruccion invalida
 #define ERR_DC -3 // error division por cero
@@ -197,11 +198,13 @@ void op_a_str(uint32_t op, char* str);
 int disassembler();
 void limpiar_input_buffer();
 void proceso_suma(int32_t a, int32_t b, int32_t* r);
+void errcode_a_str(int err, char* out);
 
 
 int main(int argc, char **argv){
     char* nombre_archivo;
     int flag_on = 0;
+    char err_msg[40];
     int err;
 
 
@@ -236,11 +239,14 @@ int main(int argc, char **argv){
     while (!err) { // si IP sale del segmento, sucede un error de segmento y retorna error -1
         err=lectura_programa();
     }
-    printf("Deteniendo lectura por error o STOP. errcode:%d\n\n\n", err);
+
+    errcode_a_str(err, err_msg);
+    printf("\n Deteniendo ejecucion. %s\n\n", err_msg);
 
 
     if(flag_on)
     {
+        printf("\n Disassembler:\n\n");
         if(err=disassembler())
             printf("disassembler salio con error! (%d)\n", err);
     }
@@ -490,7 +496,7 @@ int lectura_programa(){
 
     uint32_t operacion; // tube que hacerlo 32 en vez de 8 para poder pasarlo como parametro uint32_t* de leer_memoria :/
     if(leer_memoria(IP, 1, &operacion))
-        return ERR_FS; // error de segmento
+        return ERR_FP; // fin de programa
 
     OPC  = operacion & 0b00011111;
     tipo_p2 = (operacion >> 6) & 0b00000011;            // Bits 7 y 6: Operando B
@@ -503,7 +509,7 @@ int lectura_programa(){
         leer_memoria(pl_p2, tipo_p2, &data_p2) ||
         leer_memoria(pl_p1, tipo_p1, &data_p1)
     )
-        return ERR_FS; // error de segmento
+        return ERR_FP; // fin de programa
 
     tam_instruccion += (tipo_p1 + tipo_p2);
 
@@ -583,7 +589,7 @@ int get_dato_op(uint32_t op, int32_t* dato)
         case 2: // operando inmediato
             *dato = op&0x0000FFFF;
             if(op&0x00008000) // si el ultimo bit de los 2 bytes de informacion es un 1, el numero es negativo, se rellenan los restantes bits con 1s
-                op += 0xFFFF0000;
+                *dato += 0xFFFF0000;
             break;
         case 3: // operando de memoria
             index_reg = op&0x0000001F;
@@ -667,6 +673,7 @@ int opc_add(uint32_t op1, uint32_t op2)
     err = get_dato_op(op2, &b);
     if (err)
         return err;
+    
 
     proceso_suma(a, b, &res);
 
@@ -700,7 +707,7 @@ int opc_sub(uint32_t op1, uint32_t op2)
 
 int opc_mul(uint32_t op1, uint32_t op2)
 {
-    int32_t d1, d2;
+    int32_t d1, d2, res_out;
     int err = get_dato_op(op1, &d1);
     if (err)
         return err;
@@ -710,10 +717,10 @@ int opc_mul(uint32_t op1, uint32_t op2)
 
     int64_t a = d1, b = d2, res; // esto para que res pueda tomar valores fuera de los limites de 32 bits, y si sucede, se detecta y se setea el carry de cc
     res = a * b;
-
+    res_out = (int32_t) res;
     // Flags
-    int n = res < 0; // resultado negativo
-    int z = res == 0; //resultado igual a cerop
+    int n = res_out < 0; // resultado negativo
+    int z = res_out == 0; //resultado igual a cerop
     int c = res > 2147483846 || res < -2147483846; // acarreo en la multiplicacion, si hay acarreo tambien hay overflow
     int v = c;
 
@@ -751,13 +758,14 @@ int opc_div(uint32_t op1, uint32_t op2)
 
     // Flags
     int n = res < 0; // resultado negativo
+    int z = res == 0;
 
     // Caso especial de overflow en división con signo: INT32_MIN / -1
     if (a == -2147483648 && b == -1) {
         int32_t res = (int32_t)a;
-        set_flags(n,0,1,1);
+        set_flags(n,z,1,1);
     } else {
-        set_flags(n, 0, 0, 0);
+        set_flags(n, z, 0, 0);
     }
 
     err = set_dato_op(op1, res);
@@ -1160,7 +1168,7 @@ int opc_sys(uint32_t op1)
                         }
                         else // binario a mano para memoria
                         {
-                            int total_bits = (tam_vals <= 4) ? (tam_vals * 8) : 32;
+                            int total_bits = tam_vals * 8;
                             for(int b = total_bits - 1; b >= 0; b--)
                                 printf("%d", (dato >> b) & 1);
                         }
@@ -1285,7 +1293,8 @@ void proceso_suma(int32_t a, int32_t b, int32_t* r)
     int64_t sr = sa + sb;
     *r = a + b;
 
-    uint8_t v = *r != (int32_t)ur;
+    uint8_t v = (sr > INT32_MAX || sr < INT32_MIN);
+    //uint8_t v = *r != (int32_t)ur;
     uint8_t c = ur > 0xFFFFFFFF;
     uint8_t z = *r==0;
     uint8_t n = *r<0;
@@ -1416,7 +1425,7 @@ int disassembler()
             printf(" ");
 
         
-        printf("| ");
+        printf(" | ");
 
         printf("%-4s ", mnemonicos[opc]);
         if(tipo_p1)
@@ -1434,4 +1443,31 @@ void limpiar_input_buffer()
 {
     int c;
     while ((c = getchar()) != '\n' && c != EOF); // magia negra de la IA
+}
+
+/**
+ * retorna en out un mensaje explicando el codigo de error err
+ * 
+ * @param err codigo de error
+ * @param out puntero a cadena de al menos 40 chars
+ */
+void errcode_a_str(int err, char* out)
+{
+    switch(err)
+    {
+        case 1:
+            strcpy(out, "Fin de programa");
+            break;
+        case -1:
+            strcpy(out, "Fallo de segmento");
+            break;
+        case -2:
+            strcpy(out, "Instruccion invalida");
+            break;
+        case -3:
+            strcpy(out, "Division por cero");
+            break;
+        default:
+            sprintf(out, "Error de programacion, errcode: %d", err);
+    }
 }
