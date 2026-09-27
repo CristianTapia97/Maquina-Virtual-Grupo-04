@@ -1293,7 +1293,8 @@ void proceso_suma(int32_t a, int32_t b, int32_t* r)
     int64_t sr = sa + sb;
     *r = a + b;
 
-    uint8_t v = *r != (int32_t)ur;
+    uint8_t v = (sr > INT32_MAX || sr < INT32_MIN);
+    //uint8_t v = *r != (int32_t)ur;
     uint8_t c = ur > 0xFFFFFFFF;
     uint8_t z = *r==0;
     uint8_t n = *r<0;
