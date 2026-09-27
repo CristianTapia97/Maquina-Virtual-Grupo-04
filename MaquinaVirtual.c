@@ -495,13 +495,9 @@ int lectura_programa(){
     uint32_t tam_instruccion = 1;
 
     uint32_t operacion; // tube que hacerlo 32 en vez de 8 para poder pasarlo como parametro uint32_t* de leer_memoria :/
-<<<<<<< HEAD
-    if(leer_memoria(IP, 1, &operacion, 1))
-        return ERR_FS; // error de segmento
-=======
-    if(leer_memoria(IP, 1, &operacion))
+    
+    if (leer_memoria(IP, 1, &operacion, 1))
         return ERR_FP; // fin de programa
->>>>>>> 10a902d3a3a9633a640e2deaeb5d6064b2d68b08
 
     OPC  = operacion & 0b00011111;
     tipo_p2 = (operacion >> 6) & 0b00000011;            // Bits 7 y 6: Operando B
@@ -1449,8 +1445,6 @@ void limpiar_input_buffer()
     int c;
     while ((c = getchar()) != '\n' && c != EOF); // magia negra de la IA
 }
-<<<<<<< HEAD
-=======
 
 /**
  * retorna en out un mensaje explicando el codigo de error err
@@ -1478,4 +1472,3 @@ void errcode_a_str(int err, char* out)
             sprintf(out, "Error de programacion, errcode: %d", err);
     }
 }
->>>>>>> 10a902d3a3a9633a640e2deaeb5d6064b2d68b08
