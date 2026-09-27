@@ -589,7 +589,7 @@ int get_dato_op(uint32_t op, int32_t* dato)
         case 2: // operando inmediato
             *dato = op&0x0000FFFF;
             if(op&0x00008000) // si el ultimo bit de los 2 bytes de informacion es un 1, el numero es negativo, se rellenan los restantes bits con 1s
-                op += 0xFFFF0000;
+                *dato += 0xFFFF0000;
             break;
         case 3: // operando de memoria
             index_reg = op&0x0000001F;
@@ -673,6 +673,7 @@ int opc_add(uint32_t op1, uint32_t op2)
     err = get_dato_op(op2, &b);
     if (err)
         return err;
+    
 
     proceso_suma(a, b, &res);
 
@@ -706,7 +707,7 @@ int opc_sub(uint32_t op1, uint32_t op2)
 
 int opc_mul(uint32_t op1, uint32_t op2)
 {
-    int32_t d1, d2;
+    int32_t d1, d2, res_out;
     int err = get_dato_op(op1, &d1);
     if (err)
         return err;
@@ -716,10 +717,10 @@ int opc_mul(uint32_t op1, uint32_t op2)
 
     int64_t a = d1, b = d2, res; // esto para que res pueda tomar valores fuera de los limites de 32 bits, y si sucede, se detecta y se setea el carry de cc
     res = a * b;
-
+    res_out = (int32_t) res;
     // Flags
-    int n = res < 0; // resultado negativo
-    int z = res == 0; //resultado igual a cerop
+    int n = res_out < 0; // resultado negativo
+    int z = res_out == 0; //resultado igual a cerop
     int c = res > 2147483846 || res < -2147483846; // acarreo en la multiplicacion, si hay acarreo tambien hay overflow
     int v = c;
 
@@ -757,13 +758,14 @@ int opc_div(uint32_t op1, uint32_t op2)
 
     // Flags
     int n = res < 0; // resultado negativo
+    int z = res == 0;
 
     // Caso especial de overflow en división con signo: INT32_MIN / -1
     if (a == -2147483648 && b == -1) {
         int32_t res = (int32_t)a;
-        set_flags(n,0,1,1);
+        set_flags(n,z,1,1);
     } else {
-        set_flags(n, 0, 0, 0);
+        set_flags(n, z, 0, 0);
     }
 
     err = set_dato_op(op1, res);
