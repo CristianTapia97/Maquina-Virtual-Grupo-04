@@ -884,11 +884,11 @@ int opc_shl(uint32_t op1, uint32_t op2)
     c = (uint64_t)res != res_l;
     n = ((int32_t)res < 0);
     z = (res == 0);
+
     set_flags(n,z,c,0); //carga en CC
     err = set_dato_op(op1, res);
     if(err)
         return err;
-    printf("CC: %08X\n", CC);
     return 0;
 }
 
