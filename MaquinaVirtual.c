@@ -867,7 +867,8 @@ int opc_swap(uint32_t op1, uint32_t op2)
 int opc_shl(uint32_t op1, uint32_t op2)
 {
     uint32_t a, b, res;
-    int err, n, z, c, v;
+    uint64_t a_l, b_l, res_l;
+    int err, n, z, c;
     err = get_dato_op(op1, &a);
     if(err)
         return err;
@@ -875,35 +876,19 @@ int opc_shl(uint32_t op1, uint32_t op2)
     if(err)
         return err;
 
-    c=0;
-    v=0;
-    if (b == 0) {
-        res = a;
-        n=0;
-        z=0;
-    } else
-        if (b < 32) {
-            c = (int)(a >> 32 - b) & 1; //toma el valor del ultimo bit que sale afuera, sino hay carry toma cero
-            res = a << b;
-            v = (((a ^ res) & 0x80000000) != 0); //hay desbordamiento si el bit 31 difiere de a o si algún bit expulsado era distinto del bit de signo
-        } else
-            if (b == 32) { //caso especifico para cuando a es 1 o 0
-                c = (int)(a & 1U);
-                res = 0;
-                v = (a != 0);
-            } else {
-                c = 0;
-                res = 0;
-                v = (a != 0);
-            }
+    a_l = a;
+    b_l = b;
 
+    res = a << b;
+    res_l = a_l << b_l;
+    c = (uint64_t)res != res_l;
     n = ((int32_t)res < 0);
     z = (res == 0);
-    set_flags(n,z,c,v); //carga en CC
+    set_flags(n,z,c,0); //carga en CC
     err = set_dato_op(op1, res);
     if(err)
         return err;
-
+    printf("CC: %08X\n", CC);
     return 0;
 }
 
@@ -918,22 +903,11 @@ int opc_shr(uint32_t op1, uint32_t op2)
     if(err)
         return err;
     //aun tengo algunas dudas del bit de acarreo pero por lo que vi en este tipo de casos se puede activar
+    
+    res = a >> b;
+
     c=0;
-    v=0; //imposible que sea distinto de cero
-    if (b == 0) {
-        res = a;
-    } else
-        if (b < 32) {
-            // El último bit expulsado por la derecha estaba en la posición (b - 1)
-            c = (int)((a >> (b - 1)) & 1);
-            res = a >> b;
-        } else
-            if (b == 32) {
-                c = (int)((a >> 31) & 1U);
-                res = 0;
-            } else {
-                res = 0;
-            }
+    v=0;
     n = ((int32_t)res < 0);
     z = (res == 0);
     set_flags(n,z,c,v); //carga en CC
@@ -947,7 +921,6 @@ int opc_shr(uint32_t op1, uint32_t op2)
 int opc_sar(uint32_t op1, uint32_t op2)
 {
     uint32_t a, b, res;
-    int32_t castA,castRes;
     int err, n, z, c, v;
     err = get_dato_op(op1, &a);
     if(err)
@@ -955,22 +928,20 @@ int opc_sar(uint32_t op1, uint32_t op2)
     err = get_dato_op(op2,&b);
     if(err)
         return err;
-    castA = (int32_t)a; //cast para enteros con signo
+    
+    res = a >> b;
+    if(a&0x80000000)
+    {
+        uint32_t mask = 0x80000000;
+        for(int i=0; i<b; i++)
+            res |= mask>>i;
+    }
+
     c=0;
-    v=0; //imposible que sea distinto de cero
-    if (b == 0) {
-        castRes=castA;
-    } else
-        if (b < 32) {
-            c = (int)((a >> (b - 1)) & 1U);
-            castRes = castA >> b;
-        } else {
-            c = castA < 0; //si es negativo va a haber carry por que se llena todo de unos
-            castRes = (castA<0) ? -1 : 0;
-        }
-    res=(uint32_t)castRes;
-    n = castRes < 0;
-    z = res == 0;
+    v=0;
+    n = ((int32_t)res < 0);
+    z = (res == 0);
+
     set_flags(n,z,c,v); //carga en CC
     err = set_dato_op(op1, res);
     if(err)
