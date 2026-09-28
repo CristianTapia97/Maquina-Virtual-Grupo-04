@@ -38,7 +38,7 @@ int32_t registros[32] = {0};
 int32_t tabla_segmentos[8];
 // Tabla de segmentos: 8 entradas de 32 bits
 
-char formatos_sys[] = { 'd', 'c', 'o', 'X'/*, 'b' binario se implementa a mano*/ };
+char formatos_sys[][6] = { "\%d", "\%c", "0o\%o", "0x\%X"/*, 'b' binario se implementa a mano*/ };
 
 //para el registro CC, lleva el bit de signo, de cero, de acarreo y desbordamiento
 void set_flags(int n, int z, int c, int v);
@@ -885,7 +885,7 @@ int opc_shl(uint32_t op1, uint32_t op2)
     n = ((int32_t)res < 0);
     z = (res == 0);
 
-    set_flags(n,z,c,0); //carga en CC
+    set_flags(n,z,c,c); //carga en CC
     err = set_dato_op(op1, res);
     if(err)
         return err;
@@ -1061,9 +1061,7 @@ int opc_sys(uint32_t op1)
 
                 if(index_format!=4) // binario es mas raro
                 {
-                    char scanf_format[3] = "% ";
-                    scanf_format[1] = formatos_sys[index_format]; // relleno el espacio en scanf_format con el formato del input
-                    scanf(scanf_format, &input);
+                    scanf(formatos_sys[index_format], &input);
                     limpiar_input_buffer();
                 }
                 else // formato binario, incomodo
@@ -1122,10 +1120,6 @@ int opc_sys(uint32_t op1)
                     {
                         if(index_format != 4)
                         {
-                            // armo el formato correspondiente
-                            char printf_format[4] = "%  "; // los espacios son importantes
-                            if(index_format != 4)
-                                printf_format[1] = formatos_sys[index_format];
                             // Extensión de signo si es decimal y menor a 4 bytes
                             if(index_format == 0) {
                                 dato_int = dato;
@@ -1133,19 +1127,21 @@ int opc_sys(uint32_t op1)
                                 if(tam_vals == 1) dato_int = (uint32_t)(int32_t)(int8_t)dato;
                                 else if(tam_vals == 2) dato_int = (uint32_t)(int32_t)(int16_t)dato;
                                 else if(tam_vals == 3) dato_int = (dato&0x00800000)?dato|0xFF000000:dato; // si el tam es de 3, me fijo si el ultimo bit de los 3 bytes es 1, si lo es, relleno con unos
-                                printf(printf_format, (int32_t)dato_int);
+                                printf(formatos_sys[index_format], (int32_t)dato_int);
                             } else {
-                                printf(printf_format, dato);
+                                printf(formatos_sys[index_format], dato);
                             }
                         }
                         else // binario a mano para memoria
                         {
                             int total_bits = tam_vals * 8;
+                            printf("0b");
                             for(int b = total_bits - 1; b >= 0; b--)
                                 printf("%d", (dato >> b) & 1);
                         }
                     }
                     bit_mask<<=1;
+                    printf(" ");
                 }
 
 
@@ -1156,8 +1152,8 @@ int opc_sys(uint32_t op1)
             }
             break;
         default:
-            printf("ERROR SYS recibio un valor que no es 1 ni 2\n");
-            return -10;
+            //printf("ERROR SYS recibio un valor que no es 1 ni 2, no e\n");
+            //return -10;   
     }
     return 0;
 }
