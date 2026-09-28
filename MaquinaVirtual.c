@@ -38,7 +38,7 @@ int32_t registros[32] = {0};
 int32_t tabla_segmentos[8];
 // Tabla de segmentos: 8 entradas de 32 bits
 
-char formatos_sys[] = { 'd', 'c', 'o', 'X'/*, 'b' binario se implementa a mano*/ };
+char formatos_sys[][6] = { "\%d", "\%c", "0o\%o", "0x\%X"/*, 'b' binario se implementa a mano*/ };
 
 //para el registro CC, lleva el bit de signo, de cero, de acarreo y desbordamiento
 void set_flags(int n, int z, int c, int v);
@@ -867,7 +867,8 @@ int opc_swap(uint32_t op1, uint32_t op2)
 int opc_shl(uint32_t op1, uint32_t op2)
 {
     uint32_t a, b, res;
-    int err, n, z, c, v;
+    uint64_t a_l, b_l, res_l;
+    int err, n, z, c;
     err = get_dato_op(op1, &a);
     if(err)
         return err;
@@ -875,35 +876,19 @@ int opc_shl(uint32_t op1, uint32_t op2)
     if(err)
         return err;
 
-    c=0;
-    v=0;
-    if (b == 0) {
-        res = a;
-        n=0;
-        z=0;
-    } else
-        if (b < 32) {
-            c = (int)(a >> 32 - b) & 1; //toma el valor del ultimo bit que sale afuera, sino hay carry toma cero
-            res = a << b;
-            v = (((a ^ res) & 0x80000000) != 0); //hay desbordamiento si el bit 31 difiere de a o si algún bit expulsado era distinto del bit de signo
-        } else
-            if (b == 32) { //caso especifico para cuando a es 1 o 0
-                c = (int)(a & 1U);
-                res = 0;
-                v = (a != 0);
-            } else {
-                c = 0;
-                res = 0;
-                v = (a != 0);
-            }
+    a_l = a;
+    b_l = b;
 
+    res = a << b;
+    res_l = a_l << b_l;
+    c = (uint64_t)res != res_l;
     n = ((int32_t)res < 0);
     z = (res == 0);
-    set_flags(n,z,c,v); //carga en CC
+
+    set_flags(n,z,c,c); //carga en CC
     err = set_dato_op(op1, res);
     if(err)
         return err;
-
     return 0;
 }
 
@@ -918,22 +903,11 @@ int opc_shr(uint32_t op1, uint32_t op2)
     if(err)
         return err;
     //aun tengo algunas dudas del bit de acarreo pero por lo que vi en este tipo de casos se puede activar
+    
+    res = a >> b;
+
     c=0;
-    v=0; //imposible que sea distinto de cero
-    if (b == 0) {
-        res = a;
-    } else
-        if (b < 32) {
-            // El último bit expulsado por la derecha estaba en la posición (b - 1)
-            c = (int)((a >> (b - 1)) & 1);
-            res = a >> b;
-        } else
-            if (b == 32) {
-                c = (int)((a >> 31) & 1U);
-                res = 0;
-            } else {
-                res = 0;
-            }
+    v=0;
     n = ((int32_t)res < 0);
     z = (res == 0);
     set_flags(n,z,c,v); //carga en CC
@@ -947,7 +921,6 @@ int opc_shr(uint32_t op1, uint32_t op2)
 int opc_sar(uint32_t op1, uint32_t op2)
 {
     uint32_t a, b, res;
-    int32_t castA,castRes;
     int err, n, z, c, v;
     err = get_dato_op(op1, &a);
     if(err)
@@ -955,22 +928,20 @@ int opc_sar(uint32_t op1, uint32_t op2)
     err = get_dato_op(op2,&b);
     if(err)
         return err;
-    castA = (int32_t)a; //cast para enteros con signo
+    
+    res = a >> b;
+    if(a&0x80000000)
+    {
+        uint32_t mask = 0x80000000;
+        for(int i=0; i<b; i++)
+            res |= mask>>i;
+    }
+
     c=0;
-    v=0; //imposible que sea distinto de cero
-    if (b == 0) {
-        castRes=castA;
-    } else
-        if (b < 32) {
-            c = (int)((a >> (b - 1)) & 1U);
-            castRes = castA >> b;
-        } else {
-            c = castA < 0; //si es negativo va a haber carry por que se llena todo de unos
-            castRes = (castA<0) ? -1 : 0;
-        }
-    res=(uint32_t)castRes;
-    n = castRes < 0;
-    z = res == 0;
+    v=0;
+    n = ((int32_t)res < 0);
+    z = (res == 0);
+
     set_flags(n,z,c,v); //carga en CC
     err = set_dato_op(op1, res);
     if(err)
@@ -1090,9 +1061,7 @@ int opc_sys(uint32_t op1)
 
                 if(index_format!=4) // binario es mas raro
                 {
-                    char scanf_format[3] = "% ";
-                    scanf_format[1] = formatos_sys[index_format]; // relleno el espacio en scanf_format con el formato del input
-                    scanf(scanf_format, &input);
+                    scanf(formatos_sys[index_format], &input);
                     limpiar_input_buffer();
                 }
                 else // formato binario, incomodo
@@ -1151,10 +1120,6 @@ int opc_sys(uint32_t op1)
                     {
                         if(index_format != 4)
                         {
-                            // armo el formato correspondiente
-                            char printf_format[4] = "%  "; // los espacios son importantes
-                            if(index_format != 4)
-                                printf_format[1] = formatos_sys[index_format];
                             // Extensión de signo si es decimal y menor a 4 bytes
                             if(index_format == 0) {
                                 dato_int = dato;
@@ -1162,19 +1127,21 @@ int opc_sys(uint32_t op1)
                                 if(tam_vals == 1) dato_int = (uint32_t)(int32_t)(int8_t)dato;
                                 else if(tam_vals == 2) dato_int = (uint32_t)(int32_t)(int16_t)dato;
                                 else if(tam_vals == 3) dato_int = (dato&0x00800000)?dato|0xFF000000:dato; // si el tam es de 3, me fijo si el ultimo bit de los 3 bytes es 1, si lo es, relleno con unos
-                                printf(printf_format, (int32_t)dato_int);
+                                printf(formatos_sys[index_format], (int32_t)dato_int);
                             } else {
-                                printf(printf_format, dato);
+                                printf(formatos_sys[index_format], dato);
                             }
                         }
                         else // binario a mano para memoria
                         {
                             int total_bits = tam_vals * 8;
+                            printf("0b");
                             for(int b = total_bits - 1; b >= 0; b--)
                                 printf("%d", (dato >> b) & 1);
                         }
                     }
                     bit_mask<<=1;
+                    printf(" ");
                 }
 
 
@@ -1185,8 +1152,8 @@ int opc_sys(uint32_t op1)
             }
             break;
         default:
-            printf("ERROR SYS recibio un valor que no es 1 ni 2\n");
-            return -10;
+            //printf("ERROR SYS recibio un valor que no es 1 ni 2, no e\n");
+            //return -10;   
     }
     return 0;
 }
