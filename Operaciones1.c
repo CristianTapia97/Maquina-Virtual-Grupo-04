@@ -13,6 +13,8 @@ int opc_stop()
 }
 int opc_sys(uint32_t op1)
 {
+    char formatos[][6] = { "\%d", "\%c", "0o\%o", "0x\%X"/*, 'b' binario se implementa a mano*/ };
+
     uint32_t dato_op1;
     int index_format;
     int err = get_dato_op(op1, &dato_op1);
@@ -47,7 +49,7 @@ int opc_sys(uint32_t op1)
 
                 if(index_format!=4) // binario es mas raro
                 {
-                    scanf(formatos_sys[index_format], &input);
+                    scanf(formatos[index_format], &input);
                     limpiar_input_buffer();
                 }
                 else // formato binario, incomodo
@@ -113,9 +115,9 @@ int opc_sys(uint32_t op1)
                                 if(tam_vals == 1) dato_int = (uint32_t)(int32_t)(int8_t)dato;
                                 else if(tam_vals == 2) dato_int = (uint32_t)(int32_t)(int16_t)dato;
                                 else if(tam_vals == 3) dato_int = (dato&0x00800000)?dato|0xFF000000:dato; // si el tam es de 3, me fijo si el ultimo bit de los 3 bytes es 1, si lo es, relleno con unos
-                                printf(formatos_sys[index_format], (int32_t)dato_int);
+                                printf(formatos[index_format], (int32_t)dato_int);
                             } else {
-                                printf(formatos_sys[index_format], dato);
+                                printf(formatos[index_format], dato);
                             }
                         }
                         else // binario a mano para memoria

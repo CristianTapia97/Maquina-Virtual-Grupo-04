@@ -81,6 +81,8 @@ int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data, int leeIns
         *data <<= 8;
         *data += memoria[dir_fisica+i];
     }
+    *data = extender_signo(*data, c_bytes);
+
     if (!leeInstruccion) {
         LAR = puntero_l; //direccion logica
         MAR = ((uint32_t)c_bytes << 16) | ((uint32_t)dir_fisica & 0xFFFF); //cantidad de bytes en los dos bytes mas significativos
@@ -227,27 +229,47 @@ int get_dato_op(uint32_t op, int32_t* dato)
         return -10;
     }
 
-    uint8_t tipo = (op>>24)&0x3;
+    uint8_t tipo = (op>>24)&0b11;
     uint8_t index_reg;
     switch(tipo){
         case 0: // no hay operando
             *dato = 0;
             break;
         case 1: // operando de registro
-            index_reg = op&0x0000001F;
-            *dato = registros[index_reg];
+            index_reg           = op&0b00011111;
+            uint8_t seccion_reg = op&0b01100000; // la porcion del registro que se esta queriendo acceder: 00=EAX 11=AX 01=AL 10=AH
+            seccion_reg >>= 5;
+            switch(seccion_reg){
+                case 0b00: // EAX
+                    *dato = registros[index_reg];
+                    break;
+                case 0b11: //  AX
+                    *dato = registros[index_reg]&0x0000FFFF;
+                    *dato = extender_signo(*dato, 2);
+                    break;
+                case 0b01: //  AL
+                    *dato = registros[index_reg]&0x000000FF;
+                    *dato = extender_signo(*dato, 1);
+                    break;
+                case 0b10: //  AH
+                    *dato = registros[index_reg]&0x0000FF00;
+                    *dato >>= 8;
+                    *dato = extender_signo(*dato, 1);
+                    break;
+            }
             break;
         case 2: // operando inmediato
             *dato = op&0x0000FFFF;
-            if(op&0x00008000) // si el ultimo bit de los 2 bytes de informacion es un 1, el numero es negativo, se rellenan los restantes bits con 1s
-                *dato += 0xFFFF0000;
+            *dato = extender_signo(*dato, 2);
             break;
         case 3: // operando de memoria
-            index_reg = op&0x0000001F;
-            int16_t extra_offset = (op>>8)&0x0000FFFF;
+            index_reg =   op&0b00011111;
+            int8_t size = op&0b11100000;
+            size >>= 5;
+            int16_t extra_offset = (op&0x00FFFF00)>>8;
 
             uint32_t l_pointer = registros[index_reg]+extra_offset;
-            if(leer_memoria(l_pointer, 4, dato, 0))
+            if(leer_memoria(l_pointer, size, dato, 0))
                 return ERR_FS;
             break;
         //default: no hace falta porque tipo se pasa por una mascara de 2 bits, osea que no hay otro valor posible aparte de 0 1 2 3
@@ -263,20 +285,68 @@ int set_dato_op(uint32_t op, int32_t dato)
         case 0: // no hay operando
             return -20; // tipo de operando izquierdo invalido
         case 1: // operando de registro
-            index_reg = op & 0x0000001F; // mascara para los ultimos 5 bits
-            registros[index_reg] = dato;
+            index_reg           = op & 0b00011111;
+            uint8_t seccion_reg = op & 0b01100000;
+            seccion_reg >>= 5;
+            switch(seccion_reg){
+                case 0b00: // EAX
+                    registros[index_reg] = dato;
+                    break;
+                case 0b11: //  AX
+                    registros[index_reg] &= 0xFFFF0000; // vuelvo cero los ultimos 2 bytes
+                    registros[index_reg] |= dato&0x0000FFFF; // meto en los ultimos 2 bytes del registro los ultimos 2 bytes del dato
+                    break;
+                case 0b01: //  AL
+                    registros[index_reg] &= 0xFFFFFF00; // vuelvo cero el ultimo byte
+                    registros[index_reg] |= dato&0x000000FF; // meto en el ultimo byte del registro el ultimo byte del dato
+                    break;
+                case 0b10: //  AH
+                    registros[index_reg] &= 0xFFFF00FF; // vuelvo cero el ante ultimo byte
+                    registros[index_reg] |= (dato&0x000000FF)<<8; // meto en el ante ultimo byte del registro el ultimo byte del dato 
+                    break;
+            }
+            //registros[index_reg] = dato;
             break;
         case 2: // operando inmediato
             return -20; // tipo de operando izquierdo invalido
         case 3: // operando de memoria
-            index_reg = op&0x0000001F;
-            int16_t extra_offset = (op>>8)&0x0000FFFF;
+            index_reg    = op & 0b00011111;
+            uint8_t size = op & 0b11100000;
+            size >>= 5;
+            int16_t extra_offset = (op&0x00FFFF00)>>8;
 
             uint32_t l_pointer = registros[index_reg]+extra_offset;
-            if(escribir_memoria(l_pointer, 4, dato))
+            if(escribir_memoria(l_pointer, size, dato))
                 return ERR_FS;
             break;
         //default: no hace falta porque tipo se pasa por una mascara de 2 bits, osea que no hay otro valor posible aparte de 0 1 2 3
     }
     return 0;
+}
+
+
+// dado un numero de c_bytes de largo, completa los bytes restantes del int32_t con 1 si es negativo y 0 si no lo es
+// quizas deberia estar en otro archivo utils.c
+// se podria cambiar c_bytes por c_bits si fuece necesario
+int32_t extender_signo(int32_t num, uint8_t c_bytes) 
+{
+    if(c_bytes==0)
+        return 0;
+    if(c_bytes==4)
+        return num;
+
+    uint32_t mask_ultimo_bit = 0b1;
+    mask_ultimo_bit <<=c_bytes*8-1;
+
+    int32_t mask_bytes_restantes = 0x80000000;
+    mask_bytes_restantes >>= (4-c_bytes)*8-1; // -1 porque ya ocupa 1 la mascara inicial 
+
+    uint32_t mask_bytes_importantes = 0xFFFFFFFF-mask_bytes_restantes;
+
+    //printf("MUB:%08X MBR:%08X MBI:%08X\n", mask_ultimo_bit, mask_bytes_restantes, mask_bytes_importantes);
+    
+    if(mask_ultimo_bit&num)
+        return num | mask_bytes_restantes;  // le pongo los bytes sobrantes en 1
+    else
+        return num & mask_bytes_importantes;// le pongo los bytes sobrantes en 0
 }
