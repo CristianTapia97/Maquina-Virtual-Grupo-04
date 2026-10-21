@@ -9,42 +9,96 @@
 #include "Disassembler.c"
 
 int main(int argc, char **argv){
-    char* nombre_archivo;
-    int flag_on = 0;
+    char* nombre_archivo_vmx = NULL;    //       [filename.vmx]
+    char* nombre_archivo_vmi = NULL;    //       [filename.vmi]
+    int32_t memsize=-1;                 //       [m=M]
+    int hay_disassembler = 0;           //       [-d]
+    int hay_params = 0;                 //       [-p]
+    int paramsc = 0;                    //       cantidad de parametros -p
+    char** paramsv = NULL;              //       [param1, param2, param3, ...]
+
     char err_msg[40];
-    int err;
-
-
-    extender_signo(10, 3);
-    extender_signo(10, 2);
-    extender_signo(10, 1);
-    extender_signo(10, 0);
-    extender_signo(10, 4);
-
-    if(argc<2 || argc>3) // si tiene 1 o 2 parametros (argv[0] siempre tiene la direccion del exe)
+    int err=0;
+    
+    // inicio lectura de argumentos de ejecucion
+    for(int i=1; i<argc; i++)
     {
-        printf("INPUT ERROR: cantidad de argumentos invalida, formato de ejecucion:  vmx filename.vmx [-d]\n");
-        return 1;
-    }
-    else if(!str_termina_con(argv[1], ".vmx"))
-    {
-        printf("INPUT ERROR: parametro 1 (nombre de archivo .vmx) no termina con .vmx\n");
-        return 1;
-    }
-    else if(argc==3 && strcmp(argv[2], "-d"))
-    {
-        printf("INPUT ERROR: parametro 2 no es -d (unica opcion para parametro 2)\n");
-        return 1;
-    }
-    else if(argc==3)
-    {
-        flag_on = 1;
+        if(str_termina_con(argv[i], ".vmx"))
+        {
+            nombre_archivo_vmx = malloc(strlen(argv[i])+1);
+            strcpy(nombre_archivo_vmx, argv[i]);
+        }
+        else if(str_termina_con(argv[i], ".vmi"))
+        {
+            nombre_archivo_vmi = malloc(strlen(argv[i])+1);
+            strcpy(nombre_archivo_vmi, argv[i]);
+        }
+        else if(str_arranca_con(argv[i], "m="))
+        {
+            if(sscanf(argv[i], "m=%d", &memsize)!=1)
+            {
+                printf("INPUT ERROR: argumento m='numero' no tubo un numero: %s\n", argv[i]);
+                err = 1;
+                break;
+            }
+            if(memsize<=0)
+            {
+                printf("INPUT ERROR: argumento m=%d recibio un numero negativo\n", memsize);
+                err = 1;
+                break;
+            }
+        }
+        else if(strcmp(argv[i], "-d")==0)
+        {
+            hay_disassembler=1;
+        }
+        else if(strcmp(argv[i], "-p")==0)
+        {
+            hay_params = 1;
+            paramsc = argc-(i+1);
+            break; // a partir de -p, todos los siguientes args son parametros para el assembler
+        }
     }
 
-    nombre_archivo = argv[1]; // asigno a nombre_archivo el puntero al argumento 1 (path al .asm)
+    if(nombre_archivo_vmx==NULL && nombre_archivo_vmi==NULL)
+    {
+        err=1;
+        printf("INPUT ERROR: no se ingreso un archivo .vmx ni un archivo .vmi\n", memsize);
+    }
+    else if(hay_params && nombre_archivo_vmx==NULL)
+    {
+        err=1;
+        printf("INPUT ERROR: no se permite el uso de parametros -p cargando el programa desde una imagen\n", memsize); // esto porque los parametros van en memoria, pero los archivos .vmi contienen la memoria entera, asi que los parametros no se usarian
+    }
+    
+    if(err)
+        return -1;
 
-    if(err = iniciar_programa(nombre_archivo))
-        printf("ERROR LECTURA: codigo de error: %d\n", err);// deberiamos tener alguna forma de mostrar en texto lo que paso
+    if(hay_params) // armo paramsv con todos los parametros ingresados
+    {
+        int index_p1 = argc-paramsc;
+        char* param;
+
+        paramsv = malloc(sizeof(char*)*(paramsc+1)); // +1 para contemplar el archivo 
+
+        paramsv[0] = malloc(sizeof(char)*(strlen(nombre_archivo_vmx)+1));
+        strcpy(paramsv[0], nombre_archivo_vmx);
+
+        for(int i=0; i<paramsc; i++)
+        {
+            param = argv[index_p1+i];
+            paramsv[1+i] = malloc(sizeof(char)*strlen(param));
+            strcpy(paramsv[1+i], param);
+        }
+    }
+    // fin lectura de argumentos de ejecucion
+
+    if(nombre_archivo_vmx)
+        if(err = iniciar_programa(nombre_archivo_vmx, memsize, paramsc, paramsv))
+            printf("ERROR ARRANQUE VMX: codigo de error: %d\n", err);
+    else
+        if(err = cargar_programa_imagen(nombre_archivo_vmi))
+            printf("ERROR ARRANQUE VMI: codigo de error: %d\n", err);
 
 
 
@@ -56,7 +110,7 @@ int main(int argc, char **argv){
     printf("\n Deteniendo ejecucion. %s\n\n", err_msg);
 
 
-    if(flag_on)
+    if(hay_disassembler)
     {
         printf("\n Disassembler:\n\n");
         if(err=disassembler())
@@ -98,8 +152,22 @@ int str_termina_con(char* str, char* sufijo)
     return strncmp(str + len_str - len_sufijo, sufijo, len_sufijo) == 0;
 }
 
-int iniciar_programa(const char *ruta_archivo){
+int str_arranca_con(char* str, char* prefijo)
+{
+    if(!str || !prefijo)
+    {
+        printf("ERROR: str_arranca_con(str, prefijo) recibio un parametro nulo (str: %p, prefijo: %p)\n", str, prefijo);
+        return 0;
+    }
+    int len_str = strlen(str);
+    int len_prefijo = strlen(prefijo);
+    if(len_str<len_prefijo)
+        return 0;
+    return strncmp(str, prefijo, len_prefijo) == 0;
+}
 
+// falta adaptar esto a el nuevo formato de archivo vmx
+int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, char** paramsv){
     FILE *archivo = fopen(ruta_archivo, "rb");
     if (!archivo) {
         printf("Error al abrir el archivo %s", ruta_archivo);
@@ -154,6 +222,13 @@ int iniciar_programa(const char *ruta_archivo){
 
     return 0;
 }
+
+// primero habria que hacer que el programa pueda ejecutar el nuevo formato de vmx y generar imagenes vmi, para hacer las cosas progresivamente y no volvernos locos
+int cargar_programa_imagen(const char *nombre_archivo_vmi)
+{
+
+}
+
 
 /**
  * retorna en out un mensaje explicando el codigo de error err
