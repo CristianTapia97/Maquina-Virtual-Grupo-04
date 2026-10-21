@@ -14,6 +14,13 @@ int main(int argc, char **argv){
     char err_msg[40];
     int err;
 
+
+    extender_signo(10, 3);
+    extender_signo(10, 2);
+    extender_signo(10, 1);
+    extender_signo(10, 0);
+    extender_signo(10, 4);
+
     if(argc<2 || argc>3) // si tiene 1 o 2 parametros (argv[0] siempre tiene la direccion del exe)
     {
         printf("INPUT ERROR: cantidad de argumentos invalida, formato de ejecucion:  vmx filename.vmx [-d]\n");

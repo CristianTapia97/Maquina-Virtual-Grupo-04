@@ -28,6 +28,9 @@
 #define ERR_FS -1 // error fallo de segmento
 #define ERR_II -2 // error instruccion invalida
 #define ERR_DC -3 // error division por cero
+#define ERR_MI -4 // error memoria insuficiente
+#define ERR_SO -5 // error stack overflow
+#define ERR_SU -6 // error stack underflow
 
 // Memoria y Registros
 uint8_t memoria[SIZE];
@@ -35,13 +38,12 @@ int32_t registros[32] = {0};
 int32_t tabla_segmentos[8];
 // Tabla de segmentos: 8 entradas de 32 bits
 
-char formatos_sys[][6] = { "\%d", "\%c", "0o\%o", "0x\%X"/*, 'b' binario se implementa a mano*/ };
-
 //para el registro CC, lleva el bit de signo, de cero, de acarreo y desbordamiento
 void set_flags(int n, int z, int c, int v);
 
 // predefinicion operaciones
 int opc_stop();
+// int opc_RET();
 
 int opc_sys(uint32_t);
 int opc_not(uint32_t op1);//afecta el registro CC
@@ -109,7 +111,10 @@ operacion_1_param operaciones_1_param[] = {
     opc_jnp,//JNP
     opc_jnn,//JNN
     opc_jnz,//JNZ
-    opc_not //NOT
+    opc_not,//NOT
+    opc_1placeholder,//PUSH
+    opc_1placeholder,//POP
+    opc_1placeholder //CALL
 };
 
 char mnemonicos[0x20][5] = {
@@ -124,10 +129,10 @@ char mnemonicos[0x20][5] = {
     "JNN",
     "JNZ",
     "NOT",
-    "ER-B",
-    "ER-C",
-    "ER-D", // hay 4 op invalidos pero simplifica mucho tenerlo asi
-    "ER-E",
+    "PUSH",
+    "POP",
+    "CALL",
+    "RET",
     "STOP",
     "MOV",
     "ADD",
@@ -155,8 +160,8 @@ char registros_nombres[32][4] = {
     "LAR",
     "MAR",
     "MBR",
-    "R-7",
-    "R-8",
+    "SP",
+    "BP",
     "R-9",
     "EAX",
     "EBX",
@@ -176,10 +181,10 @@ char registros_nombres[32][4] = {
     "R25",
     "CS",
     "DS",
-    "R28",
-    "R29",
-    "R30",
-    "R31"
+    "ES",
+    "SS",
+    "KS",
+    "PS"
 };
 
 
@@ -198,3 +203,4 @@ int disassembler();
 void limpiar_input_buffer();
 void proceso_suma(int32_t a, int32_t b, int32_t* r);
 void errcode_a_str(int err, char* out);
+int32_t extender_signo(int32_t num, uint8_t c_bytes);
