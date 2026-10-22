@@ -94,6 +94,7 @@ int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data, int leeIns
 
 /**
  * escribe de 0 a 4 bytes desde la posicion apuntada por puntero_l
+ * debe estar inicializada la tabla de segmentos y la memoria
  *
  * @param puntero_l puntero logico al primer byte que pisar
  * @param c_bytes cantidad de bytes a escribir
