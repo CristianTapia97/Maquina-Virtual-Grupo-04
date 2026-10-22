@@ -49,7 +49,7 @@ void set_flags(int n, int z, int c, int v);
 
 // predefinicion operaciones
 int opc_stop();
-int opc_RET();
+int opc_ret();
 
 int opc_sys(uint32_t);
 int opc_not(uint32_t op1);//afecta el registro CC

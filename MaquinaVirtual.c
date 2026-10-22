@@ -131,6 +131,34 @@ int main(int argc, char **argv){
         if(err=disassembler())
             printf("disassembler salio con error! (%d)\n", err);
     }
+
+    if(PS!=0xFFFFFFFF)
+    {
+        printf("\n Param Segment: ");
+        int dir_ps = tabla_segmentos[PS>>16]&0xFFFF0000;
+        dir_ps >>= 16;
+        int tam_ps = tabla_segmentos[PS>>16]&0x0000FFFF;
+
+        for(int i=dir_ps; i<dir_ps+tam_ps; i++)
+        {
+            printf("\n [%02X]: %02X", i, memoria[i]);
+            if(memoria[i]>=32)
+                printf(" %c", memoria[i]);
+        }
+    }
+
+    printf("\n Stack Segment: ");
+    int dir_ss = tabla_segmentos[SS>>16]&0xFFFF0000;
+    dir_ss >>= 16;
+    int tam_ss = tabla_segmentos[SS>>16]&0x0000FFFF;
+
+    for(int i=dir_ss; i<dir_ss+tam_ss; i++)
+    {
+        printf("\n [%02X]: %02X", i, memoria[i]);
+        if(memoria[i]>=32)
+            printf(" %c", memoria[i]);
+    }
+
     /*
     printf("\n\n Registros:\n");
     for(int i=0; i<32; i++)
@@ -276,7 +304,7 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
     }
     fclose(archivo);
 
-    //aca deberia ir la carga del param segment
+    
 
     // Armar tabla_segmentos con los segmentos que tengan tamaño > 0
     for (int i = 0; i < 8; i++)
@@ -319,7 +347,41 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
 
     IP = CS | (entry_point & 0xFFFF);
 
-    //habria que inicializar la pila
+    //inicializacion de el param segment (era mas lindo arriba pero nesecita la tabla de segmentos inicializada)
+    uint32_t lp_argv = -1; // logical pointer al argv en el param segment
+    if(tam_ps > 0) // muevo la inicialisacion al final porque nesecito a la pila inicializada
+    {
+        int offset_ps = 0;
+        uint32_t offsets_params[cant_args];
+        for(int i=0; i<cant_args; i++) {
+            offsets_params[i] = offset_ps; // como el param segment es el primer segmento, los punteros logicos son iguales a las posiciones fisicas
+            for(int j=0; j<strlen(paramsv[i]); j++) {
+                memoria[offset_ps] = paramsv[i][j];
+                offset_ps++;
+            }
+            memoria[offset_ps] = '\0';
+            offset_ps++;
+        }
+        lp_argv = offset_ps; 
+        for(int i=0; i<cant_args; i++) {
+            printf("offsets_params[%d]: %d\n",i, offsets_params[i]);
+            escribir_memoria(offset_ps, 4, offsets_params[i]);
+            offset_ps+=4;
+        }
+    }
+    printf("lp_argv: %08X\n", lp_argv);
+
+    //inicializacion de la pila
+    SP = SS + tam_ss;
+    if(tam_ps > 0) {
+        SP-=4;
+        escribir_memoria(SP, 4, lp_argv);
+        SP-=4;
+        escribir_memoria(SP, 4, cant_args);
+    }
+    SP-=4;
+    escribir_memoria(SP, 4, -1); // RET (-1)
+
 
     return 0;
 }

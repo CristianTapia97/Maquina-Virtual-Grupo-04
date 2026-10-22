@@ -299,7 +299,7 @@ int opc_call(uint32_t op1)
     return 0;
 }
 
-int opc_RET()
+int opc_ret()
 {
     int cod_ss = (uint32_t)SS >> 16;
     uint16_t tam_ss = tabla_segmentos[cod_ss] & 0xFFFF;
