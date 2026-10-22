@@ -185,11 +185,14 @@ int lectura_programa(){
 
     uint8_t index_c = OPC;
     int err;
-    if(tipo_p1==0 && tipo_p2==0) // 0 params (STOP)
+    if(tipo_p1==0 && tipo_p2==0) // 0 params (STOP o RET)
     {
-        if(index_c != 0x0F) // si tiene 0 parametros y no es STOP, Instruccion invalida
-            return ERR_FS; // Instruccion invalida
-        err = opc_stop();
+        if(index_c == 0x0F)
+            err = opc_stop();
+        else if(index_c == 0x0E)
+            err = opc_ret();
+        else
+            return ERR_II; // Instruccion invalida
     }
     else if(tipo_p2==0) // 1 param
     {

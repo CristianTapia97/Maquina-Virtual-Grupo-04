@@ -220,3 +220,102 @@ int opc_jnz(uint32_t op1) {
     else
         return 0;
 }
+int opc_push(uint32_t op1)
+{
+    // 1. Decrementar SP en 4
+    SP -= 4;
+
+    // 2. Verificar Stack Overflow (SP menor a la base de SS)
+    if ((uint32_t)SP < (uint32_t)SS) {
+        printf("ERROR: Stack Overflow!\n");
+        return ERR_SO;
+    }
+
+    // 3. Obtener el dato del operando
+    int32_t dato = 0;
+    int err = get_dato_op(op1, &dato);
+    if (err)
+        return err;
+
+    // 4. Escribir los 4 bytes en el tope de la pila
+    err = escribir_memoria(SP, 4, (uint32_t)dato);
+    if (err)
+        return err;
+
+    return 0;
+}
+int opc_pop(uint32_t op1)
+{
+    // 1. Verificar Stack Underflow
+    // Se obtiene el tamaño del Stack Segment desde la tabla de descriptores
+    int cod_ss = (uint32_t)SS >> 16;
+    uint16_t tam_ss = tabla_segmentos[cod_ss] & 0xFFFF;
+    uint32_t sp_vacio = SS + tam_ss;
+
+    // Si SP + 4 supera el tope superior del segmento, la pila no tiene suficientes bytes
+    if ((uint32_t)(SP + 4) > sp_vacio) {
+        printf("ERROR: Stack Underflow!\n");
+        return ERR_SU;
+    }
+
+    // 2. Leer 4 bytes del tope de la pila
+    uint32_t dato = 0;
+    int err = leer_memoria(SP, 4, &dato, 0);
+    if (err)
+        return err;
+
+    // 3. Incrementar SP en 4
+    SP += 4;
+
+    // 4. Asignar el valor al operando destino
+    err = set_dato_op(op1, (int32_t)dato);
+    if (err)
+        return err;
+
+    return 0;
+}
+
+int opc_call(uint32_t op1)
+{
+    // 1. PUSH IP (guardar la direccion de retorno)
+    SP -= 4;
+    if ((uint32_t)SP < (uint32_t)SS) {
+        printf("ERROR: Stack Overflow en CALL!\n");
+        return ERR_SO;
+    }
+
+    int err = escribir_memoria(SP, 4, IP);
+    if (err)
+        return err;
+
+    // 2. Obtener destino del salto
+    int32_t destino = 0;
+    err = get_dato_op(op1, &destino);
+    if (err)
+        return err;
+
+    // 3. JMP a la subrutina (relativo a CS)
+    IP = CS | ((uint32_t)destino & 0xFFFF);
+    return 0;
+}
+
+int opc_RET()
+{
+    int cod_ss = (uint32_t)SS >> 16;
+    uint16_t tam_ss = tabla_segmentos[cod_ss] & 0xFFFF;
+    uint32_t sp_vacio = SS + tam_ss;
+
+    if ((uint32_t)(SP + 4) > sp_vacio) {
+        printf("ERROR: Stack Underflow en RET!\n");
+        return ERR_SU;
+    }
+
+    // 2. POP IP
+    uint32_t direccion_retorno = 0;
+    int err = leer_memoria(SP, 4, &direccion_retorno, 0);
+    if (err)
+        return err;
+    SP += 4;
+    IP = direccion_retorno; 
+    return 0;
+}

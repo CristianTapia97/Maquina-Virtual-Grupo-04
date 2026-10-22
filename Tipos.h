@@ -9,6 +9,8 @@
 #define LAR registros[4]
 #define MAR registros[5]
 #define MBR registros[6]
+#define SP registros[7]
+#define BP registros[8]
 #define EAX registros[10]
 #define EBX registros[11]
 #define ECX registros[12]
@@ -19,6 +21,10 @@
 #define CC registros[17]
 #define CS registros[26]
 #define DS registros[27]
+#define ES registros[28]
+#define SS registros[29]
+#define KS registros[30]
+#define PS registros[31]
 #define FLAG_N (1U << 31)
 #define FLAG_Z (1U << 30)
 #define FLAG_C (1U << 29)
@@ -33,7 +39,7 @@
 #define ERR_SU -6 // error stack underflow
 
 // Memoria y Registros
-uint8_t memoria[SIZE];
+uint8_t *memoria = NULL;
 int32_t registros[32] = {0};
 int32_t tabla_segmentos[8];
 // Tabla de segmentos: 8 entradas de 32 bits
@@ -43,7 +49,7 @@ void set_flags(int n, int z, int c, int v);
 
 // predefinicion operaciones
 int opc_stop();
-// int opc_RET();
+int opc_RET();
 
 int opc_sys(uint32_t);
 int opc_not(uint32_t op1);//afecta el registro CC
@@ -56,6 +62,9 @@ int opc_jv(uint32_t op1);
 int opc_jnp(uint32_t op1);
 int opc_jnn(uint32_t op1);
 int opc_jnz(uint32_t op1);
+int opc_push(uint32_t op1);
+int opc_pop(uint32_t op1);
+int opc_call(uint32_t op1);
 int opc_1placeholder(uint32_t op1){ printf("operacion no implementada. OPC: %02X OP1: %08X\n", OPC, op1); return 0;}
 
 int opc_mov(uint32_t, uint32_t); //afecta el registro CC
@@ -112,9 +121,9 @@ operacion_1_param operaciones_1_param[] = {
     opc_jnn,//JNN
     opc_jnz,//JNZ
     opc_not,//NOT
-    opc_1placeholder,//PUSH
-    opc_1placeholder,//POP
-    opc_1placeholder //CALL
+    opc_push,//PUSH
+    opc_pop,//POP
+    opc_call //CALL
 };
 
 char mnemonicos[0x20][5] = {
