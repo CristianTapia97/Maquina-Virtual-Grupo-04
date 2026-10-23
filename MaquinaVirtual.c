@@ -87,7 +87,7 @@ int main(int argc, char **argv){
         for(int i=0; i<paramsc; i++)
         {
             param = argv[index_p1+i];
-            paramsv[1+i] = malloc(sizeof(char)*strlen(param));
+            paramsv[1+i] = malloc(sizeof(char)*strlen(param) + 1);
             strcpy(paramsv[1+i], param);
         }
     }
