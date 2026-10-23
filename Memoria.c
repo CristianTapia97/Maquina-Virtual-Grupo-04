@@ -197,15 +197,15 @@ int lectura_programa(){
     }
     else if(tipo_p2==0) // 1 param
     {
-        if(index_c<0 || index_c>0x0A)
-            return ERR_FS; // Instruccion invalida
+        if(index_c<0 || index_c>0x0D)
+            return ERR_II; // Instruccion invalida
         err = operaciones_1_param[index_c](OP1);
     }
     else // 2 params
     {
         index_c -= 0x10;
         if(index_c<0 || index_c>0x0F)
-            return ERR_FS; // Instruccion invalida
+            return ERR_II; // Instruccion invalida
         err = operaciones_2_params[index_c](OP1, OP2);
     }
 
