@@ -1,4 +1,5 @@
 #include "Tipos.h"
+#include "MaquinaVirtual.c"
 #include <stdio.h>
 // si se usa despues de un scanf resuelve problemas con que quedan \n al apretar enter y el siguiente scanf agarra el \n en vez de un nuevo input
 void limpiar_input_buffer()
@@ -188,6 +189,9 @@ int opc_sys(uint32_t op1)
         }
         case 15:
             //habria q implementar la imagen
+            if (tienevmi){
+                
+            }
             break;
         default:
             printf("ERROR SYS recibio un valor que no es 1 ni 2, no e\n");
