@@ -103,27 +103,29 @@ int main(int argc, char **argv){
         err = iniciar_programa(nombre_archivo_vmx, memsize, paramsc, paramsv);
         if (err) {
             printf("ERROR ARRANQUE VMX: codigo de error: %d\n", err);
-            if (memoria != NULL) { free(memoria); memoria = NULL; }
+            if (memoria != NULL) { 
+                free(memoria); 
+                memoria = NULL; 
+            }
             return err;
         }
     } else if (nombre_archivo_vmi != NULL) {
         err = cargar_programa_imagen(nombre_archivo_vmi);
         if (err) {
             printf("ERROR ARRANQUE VMI: codigo de error: %d\n", err);
-            if (memoria != NULL) { free(memoria); memoria = NULL; }
+            if (memoria != NULL) { 
+                free(memoria); 
+                memoria = NULL; 
+            }
             return err;
         }
     }
-
-
-
 
     while (!err) { // si IP sale del segmento, sucede un error de segmento y retorna error -1
         err=lectura_programa();
     }
     errcode_a_str(err, err_msg);
     printf("\n Deteniendo ejecucion. %s\n\n", err_msg);
-
 
     if(hay_disassembler)
     {
@@ -152,12 +154,13 @@ int main(int argc, char **argv){
     dir_ss >>= 16;
     int tam_ss = tabla_segmentos[SS>>16]&0x0000FFFF;
 
-    for(int i=dir_ss; i<dir_ss+tam_ss; i++)
+    /*for(int i=dir_ss; i<dir_ss+tam_ss; i++)
     {
         printf("\n [%02X]: %02X", i, memoria[i]);
         if(memoria[i]>=32)
             printf(" %c", memoria[i]);
-    }
+    }*/
+    
 
     /*
     printf("\n\n Registros:\n");
@@ -304,8 +307,6 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
     }
     fclose(archivo);
 
-    
-
     // Armar tabla_segmentos con los segmentos que tengan tamaño > 0
     for (int i = 0; i < 8; i++)
         tabla_segmentos[i] = 0xFFFFFFFF;
@@ -366,22 +367,27 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
         for(int i=0; i<cant_args; i++) {
             printf("offsets_params[%d]: %d\n",i, offsets_params[i]);
             escribir_memoria(offset_ps, 4, offsets_params[i]);
+            //para no cargar los reistros lar, mar y mbr con basura
+            LAR = 0;
+            MAR = 0;
+            MBR = 0;
             offset_ps+=4;
         }
     }
     printf("lp_argv: %08X\n", lp_argv);
 
-    //inicializacion de la pila
+    //inicializacion de la pilas, por mas que no tenga definidos parametros, se pushean igual la direccion de retorno de la subrutina principal (0 para argc y -1 para argv)
     SP = SS + tam_ss;
-    if(tam_ps > 0) {
-        SP-=4;
-        escribir_memoria(SP, 4, lp_argv);
-        SP-=4;
-        escribir_memoria(SP, 4, cant_args);
-    }
+    SP-=4;
+    escribir_memoria(SP, 4, lp_argv);
+    SP-=4;
+    escribir_memoria(SP, 4, cant_args);
     SP-=4;
     escribir_memoria(SP, 4, -1); // RET (-1)
-
+    //para no cargar los reistros lar, mar y mbr con basura
+    LAR = 0;
+    MAR = 0;
+    MBR = 0;
 
     return 0;
 }
