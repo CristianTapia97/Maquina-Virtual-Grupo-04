@@ -1,4 +1,5 @@
 #include "Tipos.h"
+#include "MaquinaVirtual.c"
 #include <stdio.h>
 // si se usa despues de un scanf resuelve problemas con que quedan \n al apretar enter y el siguiente scanf agarra el \n en vez de un nuevo input
 void limpiar_input_buffer()
@@ -32,6 +33,9 @@ int opc_sys(uint32_t op1)
 
 
     switch(dato_op1){
+        case 0:
+            //hay q limpiar la pantalla, tengo que consultar como hacerlo
+            break;
         case 1:
             for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++) // mecanismo para conseguir el primer formato, y solo se usara ese
                 bit_mask <<= 1;
@@ -137,6 +141,56 @@ int opc_sys(uint32_t op1)
                 printf("\n");
 
                 puntero_l += tam_vals;
+            }
+            break;
+        case 3: // STRING READ
+        {
+            uint32_t ptr_dest = EDX;
+            int32_t max_chars = (int32_t)ECX;
+            int c;
+            int cant_leidos = 0;
+
+            // Leer caracteres desde stdin hasta salto de línea o fin de archivo
+            while ((c = getchar()) != '\n' && c != EOF) {
+                if (max_chars == -1 || cant_leidos < max_chars) {
+                    if (escribir_memoria(ptr_dest, 1, (uint8_t)c))
+                        return ERR_FS;
+                    ptr_dest++;
+                    cant_leidos++;
+                }
+            }
+            // Agregar siempre el terminador nulo '\0'
+            if (escribir_memoria(ptr_dest, 1, '\0'))
+                return ERR_FS;
+
+            break;
+        }
+        case 4: // STRING WRITE
+        {
+            uint32_t ptr = EDX;
+            uint32_t caracter = 0;
+
+            // Leemos el primer carácter apuntado por EDX
+            if (leer_memoria(ptr, 1, &caracter, 0))
+                return ERR_FS;
+
+            // Mientras no lleguemos al final de la cadena ('\0')
+            while ((char)caracter != '\0') {
+                printf("%c", (char)caracter); // Imprimimos la letra actual
+                
+                ptr++; // Avanzamos a la siguiente posición de memoria
+
+                // Leemos el siguiente carácter
+                if (leer_memoria(ptr, 1, &caracter, 0))
+                    return ERR_FS;
+            }
+
+            break;
+        }
+        case 15:
+            //habria q implementar la imagen
+            if (tienevmi){
+                
             }
             break;
         default:

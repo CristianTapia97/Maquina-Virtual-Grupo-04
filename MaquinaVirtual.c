@@ -87,7 +87,7 @@ int main(int argc, char **argv){
         for(int i=0; i<paramsc; i++)
         {
             param = argv[index_p1+i];
-            paramsv[1+i] = malloc(sizeof(char)*strlen(param));
+            paramsv[1+i] = malloc(sizeof(char)*strlen(param) + 1);
             strcpy(paramsv[1+i], param);
         }
     }
@@ -111,6 +111,7 @@ int main(int argc, char **argv){
         }
     } else if (nombre_archivo_vmi != NULL) {
         err = cargar_programa_imagen(nombre_archivo_vmi);
+        int tienevmi=1;
         if (err) {
             printf("ERROR ARRANQUE VMI: codigo de error: %d\n", err);
             if (memoria != NULL) { 
@@ -395,7 +396,7 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
 // primero habria que hacer que el programa pueda ejecutar el nuevo formato de vmx y generar imagenes vmi, para hacer las cosas progresivamente y no volvernos locos
 int cargar_programa_imagen(const char *nombre_archivo_vmi)
 {
-
+    
 }
 
 
