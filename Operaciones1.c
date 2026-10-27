@@ -161,7 +161,6 @@ int opc_sys(uint32_t op1)
         {
             uint32_t ptr = EDX;
             uint32_t caracter = 0;
-
             // Leemos el primer carácter apuntado por EDX
             if (leer_memoria(ptr, 1, &caracter, 0))
                 return ERR_FS;
@@ -173,6 +172,7 @@ int opc_sys(uint32_t op1)
                 if (leer_memoria(ptr, 1, &caracter, 0))
                     return ERR_FS;
             }
+            printf("\n");
             break;
         }
         case 15:
@@ -201,7 +201,7 @@ int opc_sys(uint32_t op1)
             // Si ingresa 'g' o presiona ENTER, la máquina virtual continúa su ciclo normalmente
             break;
         default:
-            printf("ERROR SYS recibio un valor que no es 1 ni 2, no e\n");
+            printf("ERROR SYS no recibio un operando valido\n");
             //return -10;   
     }
     return 0;
