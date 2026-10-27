@@ -172,7 +172,7 @@ int main(int argc, char **argv){
     printf("\n\n Registros:\n");
     for(int i=0; i<32; i++)
         printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]); */
-    /*
+    
     printf("\n Code Segment: \n");
     int dir_cs, tam_cs;
     puntero_logico_a_direccion_fisica(CS, &dir_cs);
@@ -186,7 +186,7 @@ int main(int argc, char **argv){
     for(int i=dir_ds; i<dir_ds+c_bytes; i++)
         printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
     printf(" ...\n");
-    */
+
     if(memoria != NULL) {
         free(memoria);
         memoria = NULL;
@@ -438,17 +438,26 @@ int cargar_programa_imagen(const char *nombre_archivo_vmi)
         fclose(archivo);
         return 5;
     }
-    // 2. Lee los 32 registros (32 * 4 = 128 bytes)
-    if (fread(registros, sizeof(int32_t), 32, archivo) != 32) {
-        printf("Error al leer los registros desde el archivo .vmi\n");
-        fclose(archivo);
-        return 6;
+    // 2. Lee los 32 registros invirtiendo los bytes de Big Endian a Little Endian
+    for (int i = 0; i < 32; i++) {
+        uint32_t aux;
+        if (fread(&aux, sizeof(uint32_t), 1, archivo) != 1) {
+            printf("Error al leer los registros desde el archivo .vmi\n");
+            fclose(archivo);
+            return 6;
+        }
+        registros[i] = (int32_t)(((aux & 0x000000FF) << 24) |((aux & 0x0000FF00) << 8)  |((aux & 0x00FF0000) >> 8)  |((aux & 0xFF000000) >> 24));
     }
-    // 3. Lee la tabla de descriptores de segmentos (8 * 4 = 32 bytes)
-    if (fread(tabla_segmentos, sizeof(uint32_t), 8, archivo) != 8) {
-        printf("Error al leer la tabla de descriptores de segmentos desde el archivo .vmi\n");
-        fclose(archivo);
-        return 7;
+
+    // 3. Lee la tabla de descriptores invirtiendo los bytes de Big Endian a Little Endian
+    for (int i = 0; i < 8; i++) {
+        uint32_t aux;
+        if (fread(&aux, sizeof(uint32_t), 1, archivo) != 1) {
+            printf("Error al leer la tabla de descriptores de segmentos desde el archivo .vmi\n");
+            fclose(archivo);
+            return 7;
+        }
+        tabla_segmentos[i] = ((aux & 0x000000FF) << 24) | ((aux & 0x0000FF00) << 8) | ((aux & 0x00FF0000) >> 8) | ((aux & 0xFF000000) >> 24);
     }
     // 4. Lee la totalidad de la memoria principal (tamaño variable)
     if (fread(memoria, sizeof(uint8_t), tam_memoria_total, archivo) != tam_memoria_total) {
