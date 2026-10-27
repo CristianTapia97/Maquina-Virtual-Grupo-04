@@ -1,5 +1,4 @@
 #include "Tipos.h"
-#include "MaquinaVirtual.c"
 #include <stdio.h>
 // si se usa despues de un scanf resuelve problemas con que quedan \n al apretar enter y el siguiente scanf agarra el \n en vez de un nuevo input
 void limpiar_input_buffer()
@@ -28,9 +27,7 @@ int opc_sys(uint32_t op1)
     uint32_t puntero_l = EDX;
     int dir_puntero;
 
-
     uint8_t bit_mask = 0x00000001;
-
 
     switch(dato_op1){
         case 0:
@@ -135,11 +132,7 @@ int opc_sys(uint32_t op1)
                     bit_mask<<=1;
                     printf(" ");
                 }
-
-
-
                 printf("\n");
-
                 puntero_l += tam_vals;
             }
             break;
@@ -149,7 +142,6 @@ int opc_sys(uint32_t op1)
             int32_t max_chars = (int32_t)ECX;
             int c;
             int cant_leidos = 0;
-
             // Leer caracteres desde stdin hasta salto de línea o fin de archivo
             while ((c = getchar()) != '\n' && c != EOF) {
                 if (max_chars == -1 || cant_leidos < max_chars) {
@@ -173,25 +165,40 @@ int opc_sys(uint32_t op1)
             // Leemos el primer carácter apuntado por EDX
             if (leer_memoria(ptr, 1, &caracter, 0))
                 return ERR_FS;
-
             // Mientras no lleguemos al final de la cadena ('\0')
             while ((char)caracter != '\0') {
                 printf("%c", (char)caracter); // Imprimimos la letra actual
-                
                 ptr++; // Avanzamos a la siguiente posición de memoria
-
                 // Leemos el siguiente carácter
                 if (leer_memoria(ptr, 1, &caracter, 0))
                     return ERR_FS;
             }
-
             break;
         }
         case 15:
-            //habria q implementar la imagen
-            if (tienevmi){
-                
+            if (nombre_archivo_vmi == NULL) //solo se permite usar el comando cuando se da el archivo vmi
+                break;
+
+            if (guardar_archivo_imagen(nombre_archivo_vmi) != 0) { //guarda el estado actual de la maquina virtual
+                printf("Error al generar la imagen en el breakpoint.\n");
+                return ERR_FP;
             }
+            // 2. Quedar a la espera de la acción del usuario para debug
+            printf("[BREAKPOINT] Imagen actualizada en %s. Ingrese:\n", nombre_archivo_vmi);
+            printf("  'g' -> Continuar ejecución\n");
+            printf("  'q' -> Salir y abortar\n");
+            printf("  ENTER -> Ejecutar paso a paso\n");
+            printf("Opción: ");
+
+            char opcion = getchar();
+            if (opcion != '\n') {
+                limpiar_input_buffer(); // Limpia caracteres sobrantes del buffer
+            }
+            if (opcion == 'q') {
+                // Aborta la ejecución dejando intacto el .vmi para retomarlo después
+                return ERR_FP; 
+            }
+            // Si ingresa 'g' o presiona ENTER, la máquina virtual continúa su ciclo normalmente
             break;
         default:
             printf("ERROR SYS recibio un valor que no es 1 ni 2, no e\n");
@@ -199,8 +206,6 @@ int opc_sys(uint32_t op1)
     }
     return 0;
 }
-
-
 
 int opc_not(uint32_t op1){
 

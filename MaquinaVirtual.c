@@ -111,7 +111,6 @@ int main(int argc, char **argv){
         }
     } else if (nombre_archivo_vmi != NULL) {
         err = cargar_programa_imagen(nombre_archivo_vmi);
-        int tienevmi=1;
         if (err) {
             printf("ERROR ARRANQUE VMI: codigo de error: %d\n", err);
             if (memoria != NULL) { 
@@ -393,12 +392,96 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
     return 0;
 }
 
-// primero habria que hacer que el programa pueda ejecutar el nuevo formato de vmx y generar imagenes vmi, para hacer las cosas progresivamente y no volvernos locos
+//al leer el archivo vmi, carga los segmentos, los registros y la memoria principal en la maquina virtual teniendo el momento preciso en el que se crea el vmi y permite continuar con la ejecucion en ese momento
 int cargar_programa_imagen(const char *nombre_archivo_vmi)
 {
-    
+    uint32_t tam_memoria_total;
+    FILE *archivo = fopen(nombre_archivo_vmi, "rb");
+    if (!archivo) {
+        printf("Error al abrir el archivo de imagen: %s\n", nombre_archivo_vmi);
+        return 1;
+    }
+    // 1. Lee y valida la cabecera (8 bytes en total)
+    char identificador[6] = {0};
+    if (fread(identificador, sizeof(char), 5, archivo) != 5 || strcmp(identificador, "VMI26") != 0) {
+        printf("Error: El archivo .vmi no tiene un identificador valido.\n");
+        fclose(archivo);
+        return 2;
+    }
+    uint8_t version;
+    if (fread(&version, sizeof(uint8_t), 1, archivo) != 1) {
+        printf("Error: version de vmi incorrecta. \n");
+        fclose(archivo);
+        return 3;
+    }
+    // Lee el tamaño de la memoria principal en KiB (2 bytes)
+    uint8_t tam_mem_bytes[2];
+    if (fread(tam_mem_bytes, sizeof(uint8_t), 2, archivo) != 2) {
+        fclose(archivo);
+        return 4;
+    }
+    uint16_t tam_mem_kib = (tam_mem_bytes[0] << 8) | tam_mem_bytes[1];
+    tam_memoria_total = (uint32_t)tam_mem_kib * 1024; // Convierte KiB a bytes
+    // Asigna o redimensiona dinámicamente la memoria principal del sistema
+    if (memoria != NULL) {
+        free(memoria);
+    }
+    memoria = (uint8_t*)malloc(tam_memoria_total);
+    if (!memoria) {
+        printf("Error: No se pudo reservar memoria para la imagen cargada.\n");
+        fclose(archivo);
+        return 5;
+    }
+    // 2. Lee los 32 registros (32 * 4 = 128 bytes)
+    if (fread(registros, sizeof(int32_t), 32, archivo) != 32) {
+        printf("Error al leer los registros desde el archivo .vmi\n");
+        fclose(archivo);
+        return 6;
+    }
+    // 3. Lee la tabla de descriptores de segmentos (8 * 4 = 32 bytes)
+    if (fread(tabla_segmentos, sizeof(uint32_t), 8, archivo) != 8) {
+        printf("Error al leer la tabla de descriptores de segmentos desde el archivo .vmi\n");
+        fclose(archivo);
+        return 7;
+    }
+    // 4. Lee la totalidad de la memoria principal (tamaño variable)
+    if (fread(memoria, sizeof(uint8_t), tam_memoria_total, archivo) != tam_memoria_total) {
+        printf("Error al leer la memoria principal desde el archivo .vmi\n");
+        fclose(archivo);
+        return 8;
+    }
+    fclose(archivo);
+    return 0; // Carga de imagen exitosa
 }
-
+//guarda en un archivo vmi el estado actual de la maquina virtual cuando se encuentra con un sys F
+int guardar_archivo_imagen(const char *nombre_archivo_vmi) {
+    uint32_t tam_memoria_total;
+    FILE *archivo = fopen(nombre_archivo_vmi, "wb");
+    if (!archivo) {
+        printf("Error: No se pudo crear o abrir el archivo .vmi para escritura.\n");
+        return 1;
+    }
+    // 1. Header (8 bytes en total)
+    // Identificador "VMI26" (5 bytes)
+    fwrite("VMI26", sizeof(char), 5, archivo);
+    // Versión (1 byte)
+    uint8_t version = 1;
+    fwrite(&version, sizeof(uint8_t), 1, archivo);
+    // Tamaño de la memoria principal en KiB (2 bytes, formato big endian)
+    uint16_t tam_mem_kib = (uint16_t)(tam_memoria_total / 1024);
+    uint8_t tam_mem_bytes[2];
+    tam_mem_bytes[0] = (tam_mem_kib >> 8) & 0xFF; // Byte alto
+    tam_mem_bytes[1] = tam_mem_kib & 0xFF;         // Byte bajo
+    fwrite(tam_mem_bytes, sizeof(uint8_t), 2, archivo);
+    // 2. Registros (32 * 4 = 128 bytes)
+    fwrite(registros, sizeof(int32_t), 32, archivo);
+    // 3. Tabla de descriptores de segmentos (8 * 4 = 32 bytes)
+    fwrite(tabla_segmentos, sizeof(uint32_t), 8, archivo);
+    // 4. Memoria principal (tamaño variable)
+    fwrite(memoria, sizeof(uint8_t), tam_memoria_total, archivo);
+    fclose(archivo);
+    return 0;
+}
 
 /**
  * retorna en out un mensaje explicando el codigo de error err

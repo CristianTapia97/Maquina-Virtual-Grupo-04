@@ -47,6 +47,8 @@ int32_t tabla_segmentos[8];
 //para el registro CC, lleva el bit de signo, de cero, de acarreo y desbordamiento
 void set_flags(int n, int z, int c, int v);
 
+//para que me tome la variable global de la ruta del vmi
+char* nombre_archivo_vmi;
 // predefinicion operaciones
 int opc_stop();
 int opc_ret();
@@ -215,3 +217,4 @@ void limpiar_input_buffer();
 void proceso_suma(int32_t a, int32_t b, int32_t* r);
 void errcode_a_str(int err, char* out);
 int32_t extender_signo(int32_t num, uint8_t c_bytes);
+extern int guardar_archivo_imagen(const char *nombre_archivo_vmi);
