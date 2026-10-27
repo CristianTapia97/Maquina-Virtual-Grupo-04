@@ -81,9 +81,9 @@ int leer_memoria(uint32_t puntero_l, uint8_t c_bytes, uint32_t* data, int leeIns
         *data <<= 8;
         *data += memoria[dir_fisica+i];
     }
-    *data = extender_signo(*data, c_bytes);
 
     if (!leeInstruccion) {
+        *data = extender_signo(*data, c_bytes);
         LAR = puntero_l; //direccion logica
         MAR = ((uint32_t)c_bytes << 16) | ((uint32_t)dir_fisica & 0xFFFF); //cantidad de bytes en los dos bytes mas significativos
                                                                     //y direccion fisica en los dos bytes menos significativos
@@ -148,7 +148,7 @@ int lectura_programa(){
     uint32_t tam_instruccion = 1;
 
     uint32_t operacion; // tube que hacerlo 32 en vez de 8 para poder pasarlo como parametro uint32_t* de leer_memoria :/
-    
+
     if (leer_memoria(IP, 1, &operacion, 1))
         return ERR_FP; // fin de programa
 
@@ -268,8 +268,9 @@ int get_dato_op(uint32_t op, int32_t* dato)
             break;
         case 3: // operando de memoria
             index_reg =   op&0b00011111;
-            int8_t size = op&0b11100000;
+            uint8_t size = (uint8_t)op&0b11100000;
             size >>= 5;
+            if (size == 0) size = 4; // Por defecto dword si viene sin tamaño explícito
             int16_t extra_offset = (op&0x00FFFF00)>>8;
 
             uint32_t l_pointer = registros[index_reg]+extra_offset;
@@ -315,8 +316,9 @@ int set_dato_op(uint32_t op, int32_t dato)
             return -20; // tipo de operando izquierdo invalido
         case 3: // operando de memoria
             index_reg    = op & 0b00011111;
-            uint8_t size = op & 0b11100000;
+            uint8_t size = (uint8_t)op & 0b11100000;
             size >>= 5;
+            if (size == 0) size = 4;
             int16_t extra_offset = (op&0x00FFFF00)>>8;
 
             uint32_t l_pointer = registros[index_reg]+extra_offset;

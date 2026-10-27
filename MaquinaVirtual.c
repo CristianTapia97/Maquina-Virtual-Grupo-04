@@ -7,10 +7,10 @@
 #include "Operaciones1.c"
 #include "Operaciones2.c"
 #include "Disassembler.c"
+    char* nombre_archivo_vmi = NULL;    //       [filename.vmi]
 
 int main(int argc, char **argv){
     char* nombre_archivo_vmx = NULL;    //       [filename.vmx]
-    char* nombre_archivo_vmi = NULL;    //       [filename.vmi]
     int32_t memsize=16;                 //       [m=M]
     int hay_disassembler = 0;           //       [-d]
     int hay_params = 0;                 //       [-p]
@@ -74,25 +74,31 @@ int main(int argc, char **argv){
     if(err)
         return -1;
 
-    if(hay_params) // armo paramsv con todos los parametros ingresados
+    if(nombre_archivo_vmx != NULL) // si arrancamos desde .vmx, armamos paramsv
     {
-        int index_p1 = argc-paramsc;
-        char* param;
+        // Si hay -p sumamos paramsc, si no hay -p solo queda argv[0]
+        int cant_adicionales = hay_params ? paramsc : 0;
+        paramsv = malloc(sizeof(char*) * (cant_adicionales + 1));
 
-        paramsv = malloc(sizeof(char*)*(paramsc+1)); // +1 para contemplar el archivo 
-
-        paramsv[0] = malloc(sizeof(char)*(strlen(nombre_archivo_vmx)+1));
+        // paramsv[0] siempre contiene el nombre del archivo ejecutable
+        paramsv[0] = malloc(sizeof(char) * (strlen(nombre_archivo_vmx) + 1));
         strcpy(paramsv[0], nombre_archivo_vmx);
 
-        for(int i=0; i<paramsc; i++)
+        // Si se paso la bandera -p, cargamos los parametros adicionales
+        if(hay_params)
         {
-            param = argv[index_p1+i];
-            paramsv[1+i] = malloc(sizeof(char)*strlen(param) + 1);
-            strcpy(paramsv[1+i], param);
+            int index_p1 = argc - paramsc;
+            for(int i = 0; i < paramsc; i++)
+            {
+                char* param = argv[index_p1 + i];
+                paramsv[1 + i] = malloc(sizeof(char) * (strlen(param) + 1));
+                strcpy(paramsv[1 + i], param);
+            }
         }
     }
     // fin lectura de argumentos de ejecucion
     memsize *= 1024;
+    tam_memoria_total = memsize;
     memoria = (uint8_t*) calloc(memsize, sizeof(uint8_t));
     if (memoria == NULL) {
         printf("ERROR: No se pudo asignar memoria principal (%d bytes).\n", memsize);
@@ -149,12 +155,12 @@ int main(int argc, char **argv){
         }
     }
 
-    printf("\n Stack Segment: ");
+    //printf("\n Stack Segment: ");
     int dir_ss = tabla_segmentos[SS>>16]&0xFFFF0000;
     dir_ss >>= 16;
     int tam_ss = tabla_segmentos[SS>>16]&0x0000FFFF;
-
-    /*for(int i=dir_ss; i<dir_ss+tam_ss; i++)
+    /*
+    for(int i=dir_ss; i<dir_ss+tam_ss; i++)
     {
         printf("\n [%02X]: %02X", i, memoria[i]);
         if(memoria[i]>=32)
@@ -165,8 +171,8 @@ int main(int argc, char **argv){
     /*
     printf("\n\n Registros:\n");
     for(int i=0; i<32; i++)
-        printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]);
-
+        printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]); */
+    /*
     printf("\n Code Segment: \n");
     int dir_cs, tam_cs;
     puntero_logico_a_direccion_fisica(CS, &dir_cs);
@@ -270,7 +276,7 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
         entry_point = (tam_bytes[0] << 8) | tam_bytes[1];
     }
     uint16_t tam_ps = 0;
-    int cant_args = (paramsv != NULL && paramsc > 0) ? (paramsc + 1) : 0;
+    int cant_args = (paramsv != NULL) ? (paramsc + 1) : 0;
     if (cant_args > 0) {
         for (int i = 0; i < cant_args; i++) {
             tam_ps += (uint16_t)(strlen(paramsv[i]) + 1);
@@ -355,7 +361,7 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
         int offset_ps = 0;
         uint32_t offsets_params[cant_args];
         for(int i=0; i<cant_args; i++) {
-            offsets_params[i] = offset_ps; // como el param segment es el primer segmento, los punteros logicos son iguales a las posiciones fisicas
+            offsets_params[i] = PS | offset_ps; // como el param segment es el primer segmento, los punteros logicos son iguales a las posiciones fisicas
             for(int j=0; j<strlen(paramsv[i]); j++) {
                 memoria[offset_ps] = paramsv[i][j];
                 offset_ps++;
@@ -363,10 +369,10 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
             memoria[offset_ps] = '\0';
             offset_ps++;
         }
-        lp_argv = offset_ps; 
+        lp_argv = PS | offset_ps; 
         for(int i=0; i<cant_args; i++) {
             printf("offsets_params[%d]: %d\n",i, offsets_params[i]);
-            escribir_memoria(offset_ps, 4, offsets_params[i]);
+            escribir_memoria(PS | offset_ps, 4, offsets_params[i]);
             //para no cargar los reistros lar, mar y mbr con basura
             LAR = 0;
             MAR = 0;
@@ -455,7 +461,6 @@ int cargar_programa_imagen(const char *nombre_archivo_vmi)
 }
 //guarda en un archivo vmi el estado actual de la maquina virtual cuando se encuentra con un sys F
 int guardar_archivo_imagen(const char *nombre_archivo_vmi) {
-    uint32_t tam_memoria_total;
     FILE *archivo = fopen(nombre_archivo_vmi, "wb");
     if (!archivo) {
         printf("Error: No se pudo crear o abrir el archivo .vmi para escritura.\n");
@@ -474,10 +479,19 @@ int guardar_archivo_imagen(const char *nombre_archivo_vmi) {
     tam_mem_bytes[1] = tam_mem_kib & 0xFF;         // Byte bajo
     fwrite(tam_mem_bytes, sizeof(uint8_t), 2, archivo);
     // 2. Registros (32 * 4 = 128 bytes)
-    fwrite(registros, sizeof(int32_t), 32, archivo);
-    // 3. Tabla de descriptores de segmentos (8 * 4 = 32 bytes)
-    fwrite(tabla_segmentos, sizeof(uint32_t), 8, archivo);
-    // 4. Memoria principal (tamaño variable)
+    // 2. Registros (32 * 4 = 128 bytes, invertidos en el for a Big Endian)
+    for (int i = 0; i < 32; i++) {
+        uint32_t val = (uint32_t)registros[i];
+        uint32_t be = ((val & 0x000000FF) << 24) | ((val & 0x0000FF00) << 8)  | ((val & 0x00FF0000) >> 8)  | ((val & 0xFF000000) >> 24);
+        fwrite(&be, sizeof(uint32_t), 1, archivo);
+    }
+
+    // 3. Tabla de descriptores de segmentos (8 * 4 = 32 bytes, invertidos en el for a Big Endian)
+    for (int i = 0; i < 8; i++) {
+        uint32_t val = tabla_segmentos[i];
+        uint32_t be = ((val & 0x000000FF) << 24) | ((val & 0x0000FF00) << 8)  | ((val & 0x00FF0000) >> 8)  | ((val & 0xFF000000) >> 24);
+        fwrite(&be, sizeof(uint32_t), 1, archivo);
+    }
     fwrite(memoria, sizeof(uint8_t), tam_memoria_total, archivo);
     fclose(archivo);
     return 0;
