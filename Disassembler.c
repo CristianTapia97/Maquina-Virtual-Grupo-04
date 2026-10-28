@@ -77,8 +77,56 @@ int disassembler()
     uint32_t data_p2 = 0;
     uint32_t tam_instruccion = 1;
     uint32_t operacion;
-    uint32_t dir_op;
+    uint32_t dir;
     uint8_t byte;
+
+    uint32_t charp = KS; // char pointer para los caracteres en el const segment
+    while(chunk_memoria_valido(charp, 1, NULL))
+    {
+        if(err = puntero_logico_a_direccion_fisica(charp, &dir))
+            return err;
+        printf("[%04X] ",dir);
+        
+        int bytes_mostrados = 0;
+        for(int i=0; i<6; i++)
+        {
+            if(err = puntero_logico_a_direccion_fisica(charp+i, &dir))
+                return err;
+            char c = memoria[dir];
+            printf("%02X ", c);
+            bytes_mostrados++;
+            if(c=='\0')
+                break;
+        }
+
+        if(memoria[dir]!='\0')  // si corto por mostrar 6 caracteres y no por haber encontrado el \0, completo el ultimo byte con \0 o .. correspondientemente
+            if(memoria[dir+1]!='\0')
+                printf(".. ");
+            else
+                printf("00 ");
+        else                    // si corto habiendo encontrado el final del texto, tengo que completar bytes con espacios
+            for(int i=0; i<7-bytes_mostrados; i++)
+                printf("   ");
+
+        printf("| ");
+
+        printf("\"");
+
+        if(err = puntero_logico_a_direccion_fisica(charp, &dir))
+            return err;
+        while(memoria[dir]!='\0')
+        {
+            if(32<=memoria[dir] && memoria[dir]<=126)
+                printf("%c", memoria[dir]);
+            else
+                printf(".");
+            charp++;
+            if(err = puntero_logico_a_direccion_fisica(charp, &dir))
+                return err;
+        }
+        printf("\"\n");
+        charp++; // avanzo al siguiente texto
+    }
 
     while(chunk_memoria_valido(ip, 1, NULL))
     {
@@ -117,14 +165,14 @@ int disassembler()
         op2 += data_p2;
         
         
-        if(err = puntero_logico_a_direccion_fisica(ip, &dir_op))
+        if(err = puntero_logico_a_direccion_fisica(ip, &dir))
             return err;
         
         ip += tam_instruccion;// desplazo IP a la siguiente instruccion
         op_a_str(op1, op1_str);
         op_a_str(op2, op2_str);
 
-        printf("[%04X] %02X",dir_op, operacion);
+        printf("[%04X] %02X",dir, operacion);
 
         for(int i=tipo_p2-1; i>=0; i--)
         {
