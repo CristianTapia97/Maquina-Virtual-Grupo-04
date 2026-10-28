@@ -179,26 +179,8 @@ int opc_sys(uint32_t op1)
             if (nombre_archivo_vmi == NULL) //solo se permite usar el comando cuando se da el archivo vmi
                 break;
 
-            if (guardar_archivo_imagen(nombre_archivo_vmi) != 0) { //guarda el estado actual de la maquina virtual
-                printf("Error al generar la imagen en el breakpoint.\n");
-                return ERR_FP;
-            }
-            // 2. Quedar a la espera de la acción del usuario para debug
-            printf("[BREAKPOINT] Imagen actualizada en %s. Ingrese:\n", nombre_archivo_vmi);
-            printf("  'g' -> Continuar ejecución\n");
-            printf("  'q' -> Salir y abortar\n");
-            printf("  ENTER -> Ejecutar paso a paso\n");
-            printf("Opción: ");
-
-            char opcion = getchar();
-            if (opcion != '\n') {
-                limpiar_input_buffer(); // Limpia caracteres sobrantes del buffer
-            }
-            if (opcion == 'q') {
-                // Aborta la ejecución dejando intacto el .vmi para retomarlo después
-                return ERR_FP; 
-            }
-            // Si ingresa 'g' o presiona ENTER, la máquina virtual continúa su ciclo normalmente
+            debugmode = 1;
+            
             break;
         default:
             printf("ERROR SYS no recibio un operando valido\n");

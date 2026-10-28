@@ -10,22 +10,44 @@ void op_a_str(uint32_t op, char* str)
 {
     uint8_t tipo = (op>>24)&0b11;
     uint32_t data = op&0x00FFFFFF;
-    if(tipo==0)
+    if(tipo==0) // sin param
         strcpy(str, "");
-    else if(tipo==1)
-        strcpy(str, registros_nombres[data]);
-    else if(tipo==2)
+    else if(tipo==1){ // registro
+        
+        uint8_t seccion = (data&0b01100000)>>5;
+        uint8_t registro = data&0b00011111;
+        strcpy(str, registros_nombres[registro]);
+        if(seccion==0b11 || seccion==0b01 || seccion==0b10) {
+            strcpy(str, str+1); // str+1 hace que arranque a copiar el registro salteandose el primer caracter:   EAX => AX
+            
+            if(seccion==0b01)
+                str[1] = 'L';
+            else if(seccion==0b10)
+                str[1] = 'H';
+        }
+        
+    }
+    else if(tipo==2) // inmediato
     {
         int16_t numero = data;
 
         sprintf(str, "%d", numero);
     }
-    else
+    else // registro
     {
         int16_t offset = data>>8;
-        uint8_t registro = data&0x1F;
+        uint8_t registro = data&0b00011111;
+        uint8_t tamanio = (data&0b11100000)>>5;
+        char c_tamanio;
+        if(tamanio==0b001)
+            c_tamanio = 'b';
+        else if(tamanio==0b010)
+            c_tamanio = 'w';
+        else
+            c_tamanio = 'l';
 
-        sprintf(str, "[%s", registros_nombres[registro]);
+
+        sprintf(str, "%c[%s", c_tamanio, registros_nombres[registro]);
         char aux[15];
         if(offset)
         {

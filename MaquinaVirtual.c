@@ -129,6 +129,33 @@ int main(int argc, char **argv){
 
     while (!err) { // si IP sale del segmento, sucede un error de segmento y retorna error -1
         err=lectura_programa();
+        
+        if(debugmode)
+        {
+            if (guardar_archivo_imagen(nombre_archivo_vmi) != 0) { //guarda el estado actual de la maquina virtual
+                printf("Error al generar la imagen en el breakpoint.\n");
+                err = ERR_FP;
+            }
+            // 2. Quedar a la espera de la acción del usuario para debug
+            printf("[BREAKPOINT] Imagen actualizada en %s. Ingrese:\n", nombre_archivo_vmi);
+            printf("  'g' -> Continuar ejecución\n");
+            printf("  'q' -> Salir y abortar\n");
+            printf("  ENTER -> Ejecutar paso a paso\n");
+            printf("Opcion: ");
+
+            char opcion = getchar();
+
+            if (opcion != '\n') {
+                limpiar_input_buffer(); // Limpia caracteres sobrantes del buffer
+            }
+            if (opcion == 'q')
+                // Aborta la ejecución dejando intacto el .vmi para retomarlo después
+                err = ERR_FP; 
+            else if(opcion == 'g') 
+                debugmode = 0;
+            //else { // tomo cualquiercosa que no sea ni q ni g como 'seguir un paso'
+            //}
+        }
     }
     errcode_a_str(err, err_msg);
     printf("\n Deteniendo ejecucion. %s\n\n", err_msg);
@@ -136,8 +163,11 @@ int main(int argc, char **argv){
     if(hay_disassembler)
     {
         printf("\n Disassembler:\n\n");
-        if(err=disassembler())
-            printf("disassembler salio con error! (%d)\n", err);
+        if(err=disassembler() && err!=ERR_FS) // fallo de segmento es la salida intencional del disassembler
+        {
+            errcode_a_str(err, err_msg);
+            printf("disassembler salio con error! %s\n", err_msg);
+        }
     }
 
     if(PS!=0xFFFFFFFF)

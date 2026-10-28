@@ -50,6 +50,10 @@ void set_flags(int n, int z, int c, int v);
 
 //para que me tome la variable global de la ruta del vmi
 char* nombre_archivo_vmi;
+
+// si esto esta en 1, se pausa la ejecucion al terminar la instruccion
+int debugmode = 0; 
+
 // predefinicion operaciones
 int opc_stop();
 int opc_ret();
