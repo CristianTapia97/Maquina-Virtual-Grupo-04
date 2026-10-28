@@ -31,7 +31,7 @@ int opc_sys(uint32_t op1)
 
     switch(dato_op1){
         case 0:
-            //hay q limpiar la pantalla, tengo que consultar como hacerlo
+            system("cls");
             break;
         case 1:
             for(index_format=0; index_format<5 && !(EAX&bit_mask); index_format++) // mecanismo para conseguir el primer formato, y solo se usara ese
@@ -180,7 +180,7 @@ int opc_sys(uint32_t op1)
                 break;
 
             debugmode = 1;
-            
+
             break;
         default:
             printf("ERROR SYS no recibio un operando valido\n");
@@ -268,7 +268,6 @@ int opc_push(uint32_t op1)
 
     // 2. Verificar Stack Overflow (SP menor a la base de SS)
     if ((uint32_t)SP < (uint32_t)SS) {
-        printf("ERROR: Stack Overflow!\n");
         return ERR_SO;
     }
 
@@ -295,7 +294,6 @@ int opc_pop(uint32_t op1)
 
     // Si SP + 4 supera el tope superior del segmento, la pila no tiene suficientes bytes
     if ((uint32_t)(SP + 4) > sp_vacio) {
-        printf("ERROR: Stack Underflow!\n");
         return ERR_SU;
     }
 
@@ -321,7 +319,6 @@ int opc_call(uint32_t op1)
     // 1. PUSH IP (guardar la direccion de retorno)
     SP -= 4;
     if ((uint32_t)SP < (uint32_t)SS) {
-        printf("ERROR: Stack Overflow en CALL!\n");
         return ERR_SO;
     }
 
@@ -347,7 +344,6 @@ int opc_ret()
     uint32_t sp_vacio = SS + tam_ss;
 
     if ((uint32_t)(SP + 4) > sp_vacio) {
-        printf("ERROR: Stack Underflow en RET!\n");
         return ERR_SU;
     }
 

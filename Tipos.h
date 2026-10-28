@@ -223,3 +223,4 @@ void proceso_suma(int32_t a, int32_t b, int32_t* r);
 void errcode_a_str(int err, char* out);
 int32_t extender_signo(int32_t num, uint8_t c_bytes);
 extern int guardar_archivo_imagen(const char *nombre_archivo_vmi);
+void print_segment_content(uint32_t dir_segmento, int c_bytes, int final);
