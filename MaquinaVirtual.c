@@ -181,7 +181,25 @@ int main(int argc, char **argv){
     print_segment_content(SS, 32, 1);
     */
 
+    /*
+    printf("\n\n Registros:\n");
+    for(int i=0; i<32; i++)
+        printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]); */
+    /*
+    printf("\n Code Segment: \n");
+    int dir_cs, tam_cs;
+    puntero_logico_a_direccion_fisica(CS, &dir_cs);
+    puntero_logico_a_direccion_fisica(DS, &tam_cs);
+    for(int i=dir_cs; i<dir_cs+tam_cs; i++)
+        printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
 
+    printf("\n Data Segment: \n");
+    int dir_ds, c_bytes = 16;
+    puntero_logico_a_direccion_fisica(DS, &dir_ds);
+    for(int i=dir_ds; i<dir_ds+c_bytes; i++)
+        printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
+    printf(" ...\n");
+*/
     if(memoria != NULL) {
         free(memoria);
         memoria = NULL;
@@ -265,7 +283,8 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
 
     // 2. Tamaño del código (2 bytes)
     uint8_t tam_bytes[2];
-    uint16_t tam_cs = 0, tam_ds = 0, tam_es = 0, tam_ss = 0, tam_ks = 0, entry_point = 0;
+    uint16_t tam_cs = 0, tam_ds = 0, tam_es = 0, tam_ss = 0, tam_ks = 0;
+    entry_point = 0;
     if (version == 1) {
         // En V1 solo hay 2 bytes de tam_codigo (CS)
         fread(tam_bytes, sizeof(uint8_t), 2, archivo);
