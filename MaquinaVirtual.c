@@ -97,18 +97,21 @@ int main(int argc, char **argv){
         }
     }
     // fin lectura de argumentos de ejecucion
-    memsize *= 1024;
-    tam_memoria_total = memsize;
-    memoria = (uint8_t*) calloc(memsize, sizeof(uint8_t));
-    if (memoria == NULL) {
-        printf("ERROR: No se pudo asignar memoria principal (%d bytes).\n", memsize);
-        return ERR_MI;
-    }
+    
 
     if (nombre_archivo_vmx != NULL) {
+        memsize *= 1024;
+        tam_memoria_total = memsize;
+        memoria = (uint8_t*) calloc(memsize, sizeof(uint8_t)); // creacion de memoria para vmx, vmi la crea por su cuenta
+        if (memoria == NULL) {
+            printf("ERROR: No se pudo asignar memoria principal (%d bytes), error de calloc.\n", memsize);
+            return 1;
+        }
+
         err = iniciar_programa(nombre_archivo_vmx, memsize, paramsc, paramsv);
         if (err) {
-            printf("ERROR ARRANQUE VMX: codigo de error: %d\n", err);
+            errcode_a_str(err, err_msg);
+            printf("ERROR ARRANQUE VMX: %s\n", err_msg);
             if (memoria != NULL) { 
                 free(memoria); 
                 memoria = NULL; 
@@ -118,7 +121,8 @@ int main(int argc, char **argv){
     } else if (nombre_archivo_vmi != NULL) {
         err = cargar_programa_imagen(nombre_archivo_vmi);
         if (err) {
-            printf("ERROR ARRANQUE VMI: codigo de error: %d\n", err);
+            errcode_a_str(err, err_msg);
+            printf("ERROR ARRANQUE VMI:  %s\n", err_msg);
             if (memoria != NULL) { 
                 free(memoria); 
                 memoria = NULL; 
@@ -129,6 +133,34 @@ int main(int argc, char **argv){
 
     while (!err) { // si IP sale del segmento, sucede un error de segmento y retorna error -1
         err=lectura_programa();
+        
+        if(debugmode)
+        {
+            if (guardar_archivo_imagen(nombre_archivo_vmi) != 0) { //guarda el estado actual de la maquina virtual
+                printf("Error al generar la imagen en el breakpoint.\n");
+                err = ERR_FP;
+            }
+            // 2. Quedar a la espera de la acción del usuario para debug
+            printf("[BREAKPOINT] Imagen actualizada en %s. \n", nombre_archivo_vmi);
+            printf("Ingrese:\n");
+            printf("  'g' -> Continuar ejecucion\n");
+            printf("  'q' -> Salir y abortar\n");
+            printf("  ENTER -> Ejecutar paso a paso\n");
+            printf("Opcion: ");
+
+            char opcion = getchar();
+
+            if (opcion != '\n') {
+                limpiar_input_buffer(); // Limpia caracteres sobrantes del buffer
+            }
+            if (opcion == 'q')
+                // Aborta la ejecución dejando intacto el .vmi para retomarlo después
+                err = ERR_FP; 
+            else if(opcion == 'g') 
+                debugmode = 0;
+            //else { // tomo cualquiercosa que no sea ni q ni g como 'seguir un paso'
+            //}
+        }
     }
     errcode_a_str(err, err_msg);
     printf("\n Deteniendo ejecucion. %s\n\n", err_msg);
@@ -136,37 +168,18 @@ int main(int argc, char **argv){
     if(hay_disassembler)
     {
         printf("\n Disassembler:\n\n");
-        if(err=disassembler())
-            printf("disassembler salio con error! (%d)\n", err);
-    }
-
-    if(PS!=0xFFFFFFFF)
-    {
-        printf("\n Param Segment: ");
-        int dir_ps = tabla_segmentos[PS>>16]&0xFFFF0000;
-        dir_ps >>= 16;
-        int tam_ps = tabla_segmentos[PS>>16]&0x0000FFFF;
-
-        for(int i=dir_ps; i<dir_ps+tam_ps; i++)
+        if(err=disassembler() && err!=ERR_FS) // fallo de segmento es la salida intencional del disassembler
         {
-            printf("\n [%02X]: %02X", i, memoria[i]);
-            if(memoria[i]>=32)
-                printf(" %c", memoria[i]);
+            errcode_a_str(err, err_msg);
+            printf("disassembler salio con error! %s\n", err_msg);
         }
     }
-
-    //printf("\n Stack Segment: ");
-    int dir_ss = tabla_segmentos[SS>>16]&0xFFFF0000;
-    dir_ss >>= 16;
-    int tam_ss = tabla_segmentos[SS>>16]&0x0000FFFF;
     /*
-    for(int i=dir_ss; i<dir_ss+tam_ss; i++)
-    {
-        printf("\n [%02X]: %02X", i, memoria[i]);
-        if(memoria[i]>=32)
-            printf(" %c", memoria[i]);
-    }*/
-    
+    printf("\n Param Segment: \n");
+    print_segment_content(PS, -1, 0);
+    printf("\n Stack Segment: \n");
+    print_segment_content(SS, 32, 1);
+    */
 
     /*
     printf("\n\n Registros:\n");
@@ -192,6 +205,28 @@ int main(int argc, char **argv){
         memoria = NULL;
     }
     return 0;
+}
+
+/**
+ * @param segmento la direccion al primer byte del segmento
+ * @param c_bytes cantidad de bytes a mostrar, -1 para mostrarlo entero
+ * @param final booleano, si es true muestra los bytes desde el final del segmento
+ */
+void print_segment_content(uint32_t dir_segmento, int c_bytes, int final) {
+    uint16_t id_segmento = dir_segmento>>16;
+    uint32_t segmento = tabla_segmentos[id_segmento];
+    uint16_t inicio_seg = segmento >> 16;
+    uint16_t tam_seg = segmento&0xFFFF;
+    uint16_t inicio;
+    if(c_bytes<=0)
+        c_bytes = tam_seg;
+    if(!final)
+        inicio = inicio_seg;
+    else
+        inicio = inicio_seg+tam_seg-c_bytes;
+
+    for(int i=inicio; i<inicio+c_bytes; i++)
+        printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
 }
 
 int str_termina_con(char* str, char* sufijo)
@@ -287,7 +322,7 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
 
     uint32_t total_necesario = (uint32_t)tam_ps + tam_ks + tam_cs + tam_ds + tam_es + tam_ss;
     if (total_necesario > (uint32_t)memsize) {
-        printf("ERROR: Memoria insuficiente. Requerido: %u bytes, Disponible: %d bytes.\n", total_necesario, memsize);
+        //printf("ERROR: Memoria insuficiente. Requerido: %u bytes, Disponible: %d bytes.\n", total_necesario, memsize); se encarga el main de mostrar el mensaje
         fclose(archivo);
         return ERR_MI;
     }
@@ -372,7 +407,7 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
         }
         lp_argv = PS | offset_ps; 
         for(int i=0; i<cant_args; i++) {
-            printf("offsets_params[%d]: %d\n",i, offsets_params[i]);
+            //printf("offsets_params[%d]: %d\n",i, offsets_params[i]);
             escribir_memoria(PS | offset_ps, 4, offsets_params[i]);
             //para no cargar los reistros lar, mar y mbr con basura
             LAR = 0;
@@ -381,7 +416,7 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
             offset_ps+=4;
         }
     }
-    printf("lp_argv: %08X\n", lp_argv);
+    //printf("lp_argv: %08X\n", lp_argv);
 
     //inicializacion de la pilas, por mas que no tenga definidos parametros, se pushean igual la direccion de retorno de la subrutina principal (0 para argc y -1 para argv)
     SP = SS + tam_ss;
@@ -402,7 +437,6 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
 //al leer el archivo vmi, carga los segmentos, los registros y la memoria principal en la maquina virtual teniendo el momento preciso en el que se crea el vmi y permite continuar con la ejecucion en ese momento
 int cargar_programa_imagen(const char *nombre_archivo_vmi)
 {
-    uint32_t tam_memoria_total;
     FILE *archivo = fopen(nombre_archivo_vmi, "rb");
     if (!archivo) {
         printf("Error al abrir el archivo de imagen: %s\n", nombre_archivo_vmi);
@@ -520,14 +554,23 @@ void errcode_a_str(int err, char* out)
         case 1:
             strcpy(out, "Fin de programa");
             break;
-        case -1:
+        case ERR_FS:
             strcpy(out, "Fallo de segmento");
             break;
-        case -2:
+        case ERR_II:
             strcpy(out, "Instruccion invalida");
             break;
-        case -3:
+        case ERR_DC:
             strcpy(out, "Division por cero");
+            break;
+        case ERR_MI:
+            strcpy(out, "Memoria insuficiente");
+            break;
+        case ERR_SO:
+            strcpy(out, "Stack overflow");
+            break;
+        case ERR_SU:
+            strcpy(out, "Stack underflow");
             break;
         default:
             sprintf(out, "Error de programacion, errcode: %d", err);
