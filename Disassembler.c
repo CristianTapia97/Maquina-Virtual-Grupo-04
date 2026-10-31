@@ -43,6 +43,56 @@ void op_a_str(uint32_t op, char* str)
 int disassembler()
 {
     int err;
+
+    if (KS != 0xFFFFFFFF && KS != -1)
+    {
+        uint32_t id_ks = KS >> 16;
+        uint32_t entrada_ks = tabla_segmentos[id_ks];
+        uint32_t dir_ks = entrada_ks >> 16;
+        uint32_t tam_ks = entrada_ks & 0x0000FFFF;
+
+        uint32_t offset = 0;
+        while (offset < tam_ks)
+        {
+            uint32_t dir_fisica = dir_ks + offset;
+            uint32_t inicio = offset;
+
+            while (offset < tam_ks && memoria[dir_ks + offset] != '\0')
+                offset++;
+            if (offset < tam_ks && memoria[dir_ks + offset] == '\0')
+                offset++;
+
+            uint32_t len_total = offset - inicio;
+
+            printf(" [%04X] ", dir_fisica);
+
+            if (len_total > 7)
+            {
+                for (int i = 0; i < 6; i++)
+                    printf("%02X ", (uint8_t)memoria[dir_ks + inicio + i]);
+                printf(".. | \"");
+            }
+            else
+            {
+                for (uint32_t i = 0; i < len_total; i++)
+                    printf("%02X ", (uint8_t)memoria[dir_ks + inicio + i]);
+                for (uint32_t i = len_total; i < 6; i++)
+                    printf("   ");
+                printf("   | \"");
+            }
+
+            for (uint32_t i = 0; i < len_total - 1; i++)
+            {
+                unsigned char c = memoria[dir_ks + inicio + i];
+                if (c >= 32 && c <= 126)
+                    putchar(c);
+                else
+                    putchar('.');
+            }
+            printf("\"\n");
+        }
+    }
+
     uint32_t ip = CS;
     uint32_t opc;
     uint32_t op1;
@@ -98,11 +148,15 @@ int disassembler()
         if(err = puntero_logico_a_direccion_fisica(ip, &dir_op))
             return err;
         
+        uint32_t offset_instruccion = ip & 0x0000FFFF;
+        if(offset_instruccion == (entry_point & 0x0000FFFF))
+            printf(">[%04X] %02X", dir_op, operacion);
+        else
+            printf(" [%04X] %02X", dir_op, operacion);
+
         ip += tam_instruccion;// desplazo IP a la siguiente instruccion
         op_a_str(op1, op1_str);
         op_a_str(op2, op2_str);
-
-        printf("[%04X] %02X",dir_op, operacion);
 
         for(int i=tipo_p2-1; i>=0; i--)
         {

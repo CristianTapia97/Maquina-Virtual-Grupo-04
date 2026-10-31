@@ -40,6 +40,7 @@
 
 // Memoria y Registros
 uint8_t *memoria = NULL;
+uint16_t entry_point;
 uint32_t tam_memoria_total;
 int32_t registros[32] = {0};
 int32_t tabla_segmentos[8];
