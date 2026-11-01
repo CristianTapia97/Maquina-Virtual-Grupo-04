@@ -185,21 +185,7 @@ int main(int argc, char **argv){
     printf("\n\n Registros:\n");
     for(int i=0; i<32; i++)
         printf(" [%02X]: %08X %d\n", i, registros[i], registros[i]); */
-    /*
-    printf("\n Code Segment: \n");
-    int dir_cs, tam_cs;
-    puntero_logico_a_direccion_fisica(CS, &dir_cs);
-    puntero_logico_a_direccion_fisica(DS, &tam_cs);
-    for(int i=dir_cs; i<dir_cs+tam_cs; i++)
-        printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
-
-    printf("\n Data Segment: \n");
-    int dir_ds, c_bytes = 16;
-    puntero_logico_a_direccion_fisica(DS, &dir_ds);
-    for(int i=dir_ds; i<dir_ds+c_bytes; i++)
-        printf(" [%02X]: %02X %d\n", i, memoria[i], memoria[i]);
-    printf(" ...\n");
-*/
+    
     if(memoria != NULL) {
         free(memoria);
         memoria = NULL;
