@@ -98,9 +98,9 @@ int disassembler()
             {
                 for (uint32_t i = 0; i < len_total; i++)
                     printf("%02X ", (uint8_t)memoria[dir_ks + inicio + i]);
-                for (uint32_t i = len_total; i < 6; i++)
+                for (uint32_t i = len_total; i < 7; i++)
                     printf("   ");
-                printf("   | \"");
+                printf("| \"");
             }
 
             for (uint32_t i = 0; i < len_total - 1; i++)
@@ -130,53 +130,7 @@ int disassembler()
     uint32_t dir;
     uint8_t byte;
 
-    uint32_t charp = KS; // char pointer para los caracteres en el const segment
-    while(chunk_memoria_valido(charp, 1, NULL))
-    {
-        if(err = puntero_logico_a_direccion_fisica(charp, &dir))
-            return err;
-        printf("[%04X] ",dir);
-        
-        int bytes_mostrados = 0;
-        for(int i=0; i<6; i++)
-        {
-            if(err = puntero_logico_a_direccion_fisica(charp+i, &dir))
-                return err;
-            char c = memoria[dir];
-            printf("%02X ", c);
-            bytes_mostrados++;
-            if(c=='\0')
-                break;
-        }
-
-        if(memoria[dir]!='\0')  // si corto por mostrar 6 caracteres y no por haber encontrado el \0, completo el ultimo byte con \0 o .. correspondientemente
-            if(memoria[dir+1]!='\0')
-                printf(".. ");
-            else
-                printf("00 ");
-        else                    // si corto habiendo encontrado el final del texto, tengo que completar bytes con espacios
-            for(int i=0; i<7-bytes_mostrados; i++)
-                printf("   ");
-
-        printf("| ");
-
-        printf("\"");
-
-        if(err = puntero_logico_a_direccion_fisica(charp, &dir))
-            return err;
-        while(memoria[dir]!='\0')
-        {
-            if(32<=memoria[dir] && memoria[dir]<=126)
-                printf("%c", memoria[dir]);
-            else
-                printf(".");
-            charp++;
-            if(err = puntero_logico_a_direccion_fisica(charp, &dir))
-                return err;
-        }
-        printf("\"\n");
-        charp++; // avanzo al siguiente texto
-    }
+    
 
     while(chunk_memoria_valido(ip, 1, NULL))
     {
@@ -220,9 +174,9 @@ int disassembler()
         
         uint32_t offset_instruccion = ip & 0x0000FFFF;
         if(offset_instruccion == (entry_point & 0x0000FFFF))
-            printf(">[%04X] %02X", dir_op, operacion);
+            printf(">[%04X] %02X", dir, operacion);
         else
-            printf(" [%04X] %02X", dir_op, operacion);
+            printf(" [%04X] %02X", dir, operacion);
 
         ip += tam_instruccion;// desplazo IP a la siguiente instruccion
         op_a_str(op1, op1_str);
