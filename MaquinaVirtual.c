@@ -180,7 +180,6 @@ int main(int argc, char **argv){
     printf("\n Stack Segment: \n");
     print_segment_content(SS, 32, 1);
     */
-
     /*
     printf("\n\n Registros:\n");
     for(int i=0; i<32; i++)
