@@ -268,7 +268,8 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
 
     // 2. Tamaño del código (2 bytes)
     uint8_t tam_bytes[2];
-    uint16_t tam_cs = 0, tam_ds = 0, tam_es = 0, tam_ss = 0, tam_ks = 0;
+    uint16_t tam_cs = 0, tam_ds = 0, tam_es = 0, tam_ss = 0, tam_ks = 0, tam_ps = 0;
+    int cant_args = (paramsv != NULL) ? (paramsc + 1) : 0;
     entry_point = 0;
     if (version == 1) {
         // En V1 solo hay 2 bytes de tam_codigo (CS)
@@ -295,17 +296,16 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
 
         fread(tam_bytes, sizeof(uint8_t), 2, archivo);
         entry_point = (tam_bytes[0] << 8) | tam_bytes[1];
-    }
-    uint16_t tam_ps = 0;
-    int cant_args = (paramsv != NULL) ? (paramsc + 1) : 0;
-    if (cant_args > 0) {
-        for (int i = 0; i < cant_args; i++) {
-            tam_ps += (uint16_t)(strlen(paramsv[i]) + 1);
+        
+        if (cant_args > 0) {
+            for (int i = 0; i < cant_args; i++) {
+                tam_ps += (uint16_t)(strlen(paramsv[i]) + 1);
+            }
+            tam_ps += (uint16_t)(cant_args * 4); // vector de punteros argv
         }
-        tam_ps += (uint16_t)(cant_args * 4); // vector de punteros argv
     }
 
-    uint32_t total_necesario = (uint32_t)tam_ps + tam_ks + tam_cs + tam_ds + tam_es + tam_ss;
+    uint32_t total_necesario = tam_ps + tam_ks + tam_cs + tam_ds + tam_es + tam_ss;
     if (total_necesario > (uint32_t)memsize) {
         //printf("ERROR: Memoria insuficiente. Requerido: %u bytes, Disponible: %d bytes.\n", total_necesario, memsize); se encarga el main de mostrar el mensaje
         fclose(archivo);
