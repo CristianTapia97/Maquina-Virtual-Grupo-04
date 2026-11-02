@@ -172,7 +172,6 @@ int opc_sys(uint32_t op1)
                 if (leer_memoria(ptr, 1, &caracter, 0))
                     return ERR_FS;
             }
-            printf("\n");
             break;
         }
         case 15:
