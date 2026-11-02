@@ -404,13 +404,15 @@ int iniciar_programa(const char *ruta_archivo, int32_t memsize, int paramsc, cha
     //printf("lp_argv: %08X\n", lp_argv);
 
     //inicializacion de la pilas, por mas que no tenga definidos parametros, se pushean igual la direccion de retorno de la subrutina principal (0 para argc y -1 para argv)
-    SP = SS + tam_ss;
-    SP-=4;
-    escribir_memoria(SP, 4, lp_argv);
-    SP-=4;
-    escribir_memoria(SP, 4, cant_args);
-    SP-=4;
-    escribir_memoria(SP, 4, -1); // RET (-1)
+    if(tam_ss > 0){
+        SP = SS + tam_ss;
+        SP-=4;
+        escribir_memoria(SP, 4, lp_argv);
+        SP-=4;
+        escribir_memoria(SP, 4, cant_args);
+        SP-=4;
+        escribir_memoria(SP, 4, -1); // RET (-1)
+    }
     //para no cargar los reistros lar, mar y mbr con basura
     LAR = 0;
     MAR = 0;
